@@ -1,0 +1,190 @@
+/* Text utilities */
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.text-brand { color: var(--brand-primary); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-error { color: var(--error); }/* Global Theme System */
+
+/* Light theme (default) */
+:root {
+  /* Background colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #e9ecef;
+  
+  /* Text colors */
+  --text-primary: #212529;
+  --text-secondary: #6c757d;
+  --text-muted: #adb5bd;
+  
+  /* App-specific brand colors */
+  --brand-primary: #007bff;
+  --brand-secondary: #6c757d;
+  --brand-accent: #28a745;
+  --brand-warning: #ffc107;
+  --brand-danger: #dc3545;
+  
+  /* Interactive elements */
+  --hover-overlay: rgba(0, 0, 0, 0.05);
+  --border-color: #dee2e6;
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  
+  /* Status colors */
+  --success: #28a745;
+  --info: #17a2b8;
+  --warning: #ffc107;
+  --error: #dc3545;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  /* Background colors */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --bg-tertiary: #404040;
+  
+  /* Text colors */
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --text-muted: #666666;
+  
+  /* App-specific brand colors (adjusted for dark mode) */
+  --brand-primary: #4dabf7;
+  --brand-secondary: #868e96;
+  --brand-accent: #51cf66;
+  --brand-warning: #ffd43b;
+  --brand-danger: #ff6b6b;
+  
+  /* Interactive elements */
+  --hover-overlay: rgba(255, 255, 255, 0.05);
+  --border-color: #495057;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  
+  /* Status colors */
+  --success: #51cf66;
+  --info: #339af0;
+  --warning: #ffd43b;
+  --error: #ff6b6b;
+}
+
+/* Global base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Common component classes using theme variables */
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  background-color: var(--bg-tertiary);
+  transform: translateY(-2px);
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--brand-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  filter: brightness(110%);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: var(--brand-secondary);
+  color: white;
+}
+
+.btn-success {
+  background-color: var(--brand-accent);
+  color: white;
+}
+
+.btn-warning {
+  background-color: var(--brand-warning);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background-color: var(--brand-danger);
+  color: white;
+}
+
+/* Text utilities */
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+
+.text-brand { color: var(--brand-primary); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-error { color: var(--error); }
+
+/* Background utilities */
+.bg-primary { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-tertiary { background-color: var(--bg-tertiary); }
+
+/* Input styling */
+input, textarea, select {
+  background-color: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: border-color 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.5rem;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.2s ease;
+  z-index: 1000;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-tertiary);
+  transform: scale(1.1);
+}
