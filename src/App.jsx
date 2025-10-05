@@ -3,6 +3,8 @@ import './App.css'
 import { createClient } from '@supabase/supabase-js'
 import { getTrackDuration, formatDuration, isValidDuration } from './utils/durationDetector'
 import { getComprehensiveMetadata, formatFileSize, getQualityInfo } from './utils/metadataDetector'
+import ProtectedDashboard from './components/ProtectedDashboard'
+import { useAuth } from './hooks/useAuth'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -61,6 +63,7 @@ const ThemeToggle = () => {
 };
 
 function App() {
+  const { artistName, isAdmin, logout } = useAuth();
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploadForm, setUploadForm] = useState({
@@ -97,6 +100,16 @@ function App() {
     loadTracks();
   }, []);
 
+  // Auto-fill artist name for non-admin users
+  useEffect(() => {
+    if (!isAdmin && artistName && !uploadForm.artist) {
+      setUploadForm(prev => ({
+        ...prev,
+        artist: artistName
+      }));
+    }
+  }, [artistName, isAdmin]);
+
   // Auto-populate album when single release is checked
   useEffect(() => {
     if (uploadForm.isSingle && uploadForm.title) {
@@ -118,12 +131,18 @@ function App() {
     try {
       setLoading(true);
 
-      // Show last 50 tracks, no time restrictions
-      const { data, error } = await supabase
+      // Admin sees all tracks, artists see only their own
+      let query = supabase
         .from('mvp_content')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
+
+      if (!isAdmin && artistName) {
+        query = query.eq('artist', artistName);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Failed to load tracks:', error);
@@ -234,6 +253,21 @@ function App() {
           // Store technical metadata for display
           setDetectedMetadata(formData.technical);
           setDetectedDuration(parseInt(formData.duration_seconds) || 0);
+
+          // Check bitrate limit (128kbps max for beta/MVP)
+          const bitrateKbps = Math.round(formData.technical.bitrate / 1000);
+          if (bitrateKbps > 128) {
+            alert(`⚠️ Bitrate Limit Exceeded\n\nYour file has a bitrate of ${bitrateKbps}kbps.\nFor beta/MVP, we only accept files at 128kbps or lower.\n\nPlease re-encode your file to 128kbps and try again.`);
+            // Clear the file
+            setUploadForm(prev => ({
+              ...prev,
+              file: null
+            }));
+            document.getElementById('file-input').value = '';
+            setDetectedMetadata(null);
+            setDetectedDuration(0);
+            return;
+          }
         }
 
       } catch (error) {
@@ -468,19 +502,46 @@ function App() {
       <ThemeToggle />
 
       <header className="header">
-        <div style={{ marginBottom: '1rem' }}>
-          <h1 style={{ display: 'inline', margin: '0 1rem 0 0', fontSize: '2rem' }}>pairap</h1>
-          <h2 style={{ display: 'inline', margin: '0 1rem 0 0', fontSize: '1.5rem', color: 'var(--brand-primary)' }}>
-            Artists Upload Dashboard
-          </h2>
-          <p style={{
-            display: 'inline',
-            margin: '0',
-            fontSize: '1rem',
-            color: 'var(--text-secondary)'
-          }}>
-            Upload tracks with metadata including genres
-          </p>
+        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ display: 'inline', margin: '0 1rem 0 0', fontSize: '2rem' }}>pairap</h1>
+            <h2 style={{ display: 'inline', margin: '0 1rem 0 0', fontSize: '1.5rem', color: 'var(--brand-primary)' }}>
+              Artists Upload Dashboard
+            </h2>
+            <p style={{
+              display: 'inline',
+              margin: '0',
+              fontSize: '1rem',
+              color: 'var(--text-secondary)'
+            }}>
+              Upload tracks with metadata including genres
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                {isAdmin ? '👑 Admin' : '🎵 Artist'}
+              </div>
+              <div style={{ fontSize: '1rem', fontWeight: '600' }}>
+                {artistName}
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              style={{
+                padding: '0.5rem 1rem',
+                fontSize: '0.875rem',
+                background: 'var(--danger, #dc3545)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
@@ -520,7 +581,7 @@ function App() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input type="checkbox" name="allowMultipleHeadliners" checked={uploadForm.allowMultipleHeadliners} onChange={handleInputChange} />
-                    Multiple Headliners
+                    Also Headlining
                   </label>
                   <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input type="checkbox" name="hasFeaturing" checked={uploadForm.hasFeaturing} onChange={handleInputChange} />
@@ -538,10 +599,12 @@ function App() {
                   type="text"
                   id="artist"
                   name="artist"
-                  value={uploadForm.artist}
+                  value={isAdmin ? uploadForm.artist : artistName}
                   onChange={handleInputChange}
-                  placeholder="Enter primary artist name"
+                  placeholder={isAdmin ? "Enter primary artist name" : artistName}
                   required
+                  readOnly={!isAdmin}
+                  style={!isAdmin ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
                 />
               </div>
 

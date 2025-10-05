@@ -5,8 +5,12 @@
   padding: 2rem;
   max-width: 1200px;
   margin: 0 auto;
-  background-color: var(--bg-primary);
+  background-color: transparent;
   transition: background-color 0.2s ease;
+}
+
+[data-theme="dark"] .app {
+  background-color: var(--bg-primary);
 }
 
 .header {
