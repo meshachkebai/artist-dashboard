@@ -24,4 +24,4 @@ Visit the dashboard at: `https://meshachkebai.github.io/artist-dashboard/`
 
 ---
 
-Built for artists, by technologists.
+Built for artists, by technologists. Obviously, we will evolve. Obvi.
