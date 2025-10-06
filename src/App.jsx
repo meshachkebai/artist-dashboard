@@ -82,7 +82,9 @@ function App() {
     hasContributing: false,
     headliners: [''],
     featuring: [''],
-    contributing: ['']
+    contributing: [''],
+    has_explicit_language: false,
+    has_adult_themes: false
   });
 
   // Metadata detection state
@@ -439,6 +441,8 @@ function App() {
           duration_seconds: uploadForm.duration_seconds ? parseInt(uploadForm.duration_seconds) : 180,
           created_at: new Date().toISOString(),
           artist_credits: artistCredits,
+          has_explicit_language: uploadForm.has_explicit_language,
+          has_adult_themes: uploadForm.has_adult_themes,
         })
         .select()
         .single();
@@ -469,7 +473,9 @@ function App() {
         hasContributing: false,
         headliners: [''],
         featuring: [''],
-        contributing: ['']
+        contributing: [''],
+        has_explicit_language: false,
+        has_adult_themes: false
       });
 
       // Reset metadata detection state
@@ -549,16 +555,30 @@ function App() {
         <div className="upload-section card">
           <h2 style={{ color: 'var(--brand-primary)' }}>Upload New Track</h2>
           <form onSubmit={handleSubmit} className="upload-form">
-            <div className="form-group">
-              <label htmlFor="file">Audio File *</label>
-              <input
-                type="file"
-                id="file-input"
-                name="file"
-                onChange={handleFileChange}
-                accept="audio/*"
-                required
-              />
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <label htmlFor="file">Audio File *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
+                    <input type="checkbox" name="has_explicit_language" checked={uploadForm.has_explicit_language} onChange={handleInputChange} />
+                    Explicit Language
+                  </label>
+                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
+                    <input type="checkbox" name="has_adult_themes" checked={uploadForm.has_adult_themes} onChange={handleInputChange} />
+                    Adult Themes
+                  </label>
+                </div>
+              </div>
+              <div className="form-group">
+                <input
+                  type="file"
+                  id="file-input"
+                  name="file"
+                  onChange={handleFileChange}
+                  accept="audio/*"
+                  required
+                />
+              </div>
             </div>
 
             <div className="form-group">
