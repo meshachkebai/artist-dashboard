@@ -16,52 +16,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-// Custom hook for theme management
-const useTheme = () => {
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('theme') || 'light';
-  });
-
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
-  };
-
-  return { theme, toggleTheme };
-};
-
-// Theme Toggle Component
-const ThemeToggle = () => {
-  const { theme, toggleTheme } = useTheme();
-
-  return (
-    <div
-      className="theme-toggle-icon"
-      onClick={toggleTheme}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && toggleTheme()}
-      aria-label="Toggle theme"
-    >
-      <svg viewBox="0 0 24 24" width="20" height="20">
-        {theme === 'light' ? (
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor" />
-        ) : (
-          <circle cx="12" cy="12" r="5" fill="currentColor" />
-        )}
-      </svg>
-    </div>
-  );
-};
-
 function App() {
   const { artistName, isAdmin, logout } = useAuth();
   const [tracks, setTracks] = useState([]);
@@ -512,52 +466,11 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <ThemeToggle />
-
-      <header className="header">
-        <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ display: 'inline', margin: '0 1rem 0 0', fontSize: '2rem' }}>pairap</h1>
-            <h2 style={{ display: 'inline', margin: '0 1rem 0 0', fontSize: '1.5rem', color: 'var(--brand-primary)' }}>
-              Artists Upload Dashboard
-            </h2>
-            <p style={{
-              display: 'inline',
-              margin: '0',
-              fontSize: '1rem',
-              color: 'var(--text-secondary)'
-            }}>
-              Upload tracks with metadata including genres
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                {isAdmin ? 'Admin' : '🎵 Artist'}
-              </div>
-              <div style={{ fontSize: '1rem', fontWeight: '600' }}>
-                {artistName}
-              </div>
-            </div>
-            <button
-              onClick={logout}
-              style={{
-                padding: '0.5rem 1rem',
-                fontSize: '0.875rem',
-                background: 'var(--danger, #dc3545)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: '500'
-              }}
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="tracks-page">
+      <div className="page-header">
+        <h1>{isAdmin ? 'All Tracks' : 'My Tracks'}</h1>
+        <p className="page-subtitle">Upload and manage your music</p>
+      </div>
 
       <div className="container">
         <div className="upload-section card">

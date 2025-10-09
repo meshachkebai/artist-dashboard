@@ -1,0 +1,151 @@
+.dashboard-layout {
+  min-height: 100vh;
+  background: var(--bg-primary, #f8f9fa);
+}
+
+.dashboard-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: var(--card-bg, #ffffff);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  z-index: 101;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.hamburger-menu {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.hamburger-menu span {
+  display: block;
+  width: 24px;
+  height: 3px;
+  background: var(--text-primary, #333);
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.header-branding {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.brand-name {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary, #000);
+}
+
+.brand-subtitle {
+  font-size: 1rem;
+  color: var(--brand-primary, #A14189);
+  font-weight: 600;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.user-info {
+  text-align: right;
+}
+
+.user-role {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.user-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.logout-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: var(--danger, #dc3545);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.logout-btn:hover {
+  background: #c82333;
+}
+
+.dashboard-main {
+  margin-left: 240px;
+  margin-top: 70px;
+  padding: 2rem;
+  min-height: calc(100vh - 70px);
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+  .hamburger-menu {
+    display: flex;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .brand-name {
+    font-size: 1.5rem;
+  }
+
+  .user-info {
+    display: none;
+  }
+
+  .dashboard-main {
+    margin-left: 0;
+    padding: 1rem;
+  }
+
+  .header-right {
+    gap: 0.75rem;
+  }
+}
+
+/* Dark theme support */
+[data-theme="dark"] .dashboard-header {
+  background: var(--card-bg);
+  border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .hamburger-menu span {
+  background: var(--text-primary);
+}
+
+[data-theme="dark"] .dashboard-layout {
+  background: var(--bg-primary);
+}

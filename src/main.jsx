@@ -1,13 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
+import AppRouter from './Router.jsx'
 import './index.css'
 import ProtectedDashboard from './components/ProtectedDashboard'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ProtectedDashboard>
-      <App />
+      <AppRouter />
     </ProtectedDashboard>
   </React.StrictMode>,
 )

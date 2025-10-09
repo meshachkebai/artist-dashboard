@@ -32,6 +32,7 @@ dist-ssr
 
 *.sql
 *.md
+*.rar
 
 .temp/*
 .kiro/*

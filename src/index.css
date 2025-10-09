@@ -11,9 +11,10 @@
 /* Light theme (default) */
 :root {
   /* Background colors */
-  --bg-primary: #ffffff;
+  --bg-primary: #f8f9fa;
   --bg-secondary: #f8f9fa;
   --bg-tertiary: #e9ecef;
+  --card-bg: #ffffff;
   
   /* Text colors */
   --text-primary: #212529;
@@ -21,7 +22,7 @@
   --text-muted: #adb5bd;
   
   /* App-specific brand colors */
-  --brand-primary: #007bff;
+  --brand-primary: #A14189;
   --brand-secondary: #6c757d;
   --brand-accent: #28a745;
   --brand-warning: #ffc107;
@@ -29,8 +30,11 @@
   
   /* Interactive elements */
   --hover-overlay: rgba(0, 0, 0, 0.05);
+  --hover-bg: #f0f0f0;
+  --active-bg: #f0e6ed;
   --border-color: #dee2e6;
   --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --danger: #dc3545;
   
   /* Status colors */
   --success: #28a745;
@@ -45,6 +49,7 @@
   --bg-primary: #1a1a1a;
   --bg-secondary: #2d2d2d;
   --bg-tertiary: #404040;
+  --card-bg: #2d2d2d;
   
   /* Text colors */
   --text-primary: #ffffff;
@@ -52,7 +57,7 @@
   --text-muted: #666666;
   
   /* App-specific brand colors (adjusted for dark mode) */
-  --brand-primary: #4dabf7;
+  --brand-primary: #D4669A;
   --brand-secondary: #868e96;
   --brand-accent: #51cf66;
   --brand-warning: #ffd43b;
@@ -60,8 +65,11 @@
   
   /* Interactive elements */
   --hover-overlay: rgba(255, 255, 255, 0.05);
+  --hover-bg: #404040;
+  --active-bg: #3d2d38;
   --border-color: #495057;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --danger: #ff6b6b;
   
   /* Status colors */
   --success: #51cf66;
@@ -77,7 +85,8 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 300;
   background: linear-gradient(135deg, #A14189 0%, #FFFFFF 100%);
   color: var(--text-primary);
   transition: background 0.3s ease, color 0.3s ease;

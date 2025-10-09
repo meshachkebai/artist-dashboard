@@ -1,0 +1,148 @@
+.analytics-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.date-range-selector {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 0.25rem;
+}
+
+.date-range-selector button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  transition: all 0.2s ease;
+}
+
+.date-range-selector button:hover {
+  background: var(--hover-bg, #f0f0f0);
+  color: var(--text-primary, #000);
+}
+
+.date-range-selector button.active {
+  background: var(--brand-primary, #A14189);
+  color: white;
+}
+
+.chart-section,
+.top-tracks-section {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.chart-section h2,
+.top-tracks-section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary, #000);
+  margin: 0 0 1.5rem 0;
+}
+
+.tracks-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-header,
+.table-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 120px 120px 120px;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: center;
+}
+
+.table-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.table-row {
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  transition: background 0.2s ease;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.table-row:hover {
+  background: var(--hover-bg, #f8f9fa);
+}
+
+.col-rank {
+  font-weight: 700;
+  color: var(--brand-primary, #A14189);
+  text-align: center;
+}
+
+.col-track .track-title {
+  font-weight: 600;
+  color: var(--text-primary, #000);
+  margin-bottom: 0.25rem;
+}
+
+.col-track .track-artist {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+.col-streams,
+.col-listeners,
+.col-duration {
+  font-weight: 500;
+  color: var(--text-primary, #000);
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .date-range-selector {
+    width: 100%;
+  }
+
+  .date-range-selector button {
+    flex: 1;
+  }
+
+  .table-header,
+  .table-row {
+    grid-template-columns: 40px 1fr 80px;
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  .col-listeners,
+  .col-duration {
+    display: none;
+  }
+}

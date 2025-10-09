@@ -1,0 +1,121 @@
+.audience-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.demographics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 2rem;
+}
+
+.chart-card {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.chart-card h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary, #000);
+  margin: 0 0 1.5rem 0;
+}
+
+.age-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.age-stat {
+  text-align: center;
+  padding: 1rem;
+  background: var(--bg-primary, #f8f9fa);
+  border-radius: 8px;
+}
+
+.age-range {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--brand-primary, #A14189);
+  margin-bottom: 0.25rem;
+}
+
+.age-percentage {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary, #000);
+  margin-bottom: 0.25rem;
+}
+
+.age-count {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+@media (max-width: 768px) {
+  .demographics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .age-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.page-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary, #000);
+  margin: 0 0 0.5rem 0;
+}
+
+.page-subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary, #666);
+  margin: 0;
+}
+
+.date-range-selector {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 0.25rem;
+}
+
+.date-range-selector button {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  transition: all 0.2s ease;
+}
+
+.date-range-selector button:hover {
+  background: var(--hover-bg, #f0f0f0);
+  color: var(--text-primary, #000);
+}
+
+.date-range-selector button.active {
+  background: var(--brand-primary, #A14189);
+  color: white;
+}
