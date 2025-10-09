@@ -1,9 +1,49 @@
 /**
  * Comprehensive Audio Metadata Detection Utility
  * Uses music-metadata library for detailed audio file analysis
+ * Includes automatic BPM detection via audio analysis
  */
 
 import { parseBlob } from 'music-metadata';
+import MusicTempo from 'music-tempo';
+
+/**
+ * Detects BPM from audio file using audio analysis
+ * @param {File} audioFile - The audio file to analyze
+ * @returns {Promise<number|null>} Detected BPM or null if detection fails
+ */
+const detectBPMFromAudio = async (audioFile) => {
+  try {
+    console.log('🎼 Analyzing audio for BPM detection...');
+
+    // Create audio context
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Read file as array buffer
+    const arrayBuffer = await audioFile.arrayBuffer();
+
+    // Decode audio data
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+    // Get audio data from first channel
+    const audioData = audioBuffer.getChannelData(0);
+
+    // Analyze tempo
+    const musicTempo = new MusicTempo(audioData);
+
+    // Close audio context to free resources
+    audioContext.close();
+
+    const bpm = Math.round(musicTempo.tempo);
+    console.log(`✅ BPM detected: ${bpm}`);
+
+    return bpm > 0 ? bpm : null;
+
+  } catch (error) {
+    console.warn('⚠️ BPM detection failed:', error.message);
+    return null;
+  }
+};
 
 /**
  * Extracts comprehensive metadata from audio file
@@ -17,6 +57,16 @@ export const getComprehensiveMetadata = async (audioFile) => {
     // Parse audio file metadata
     const metadata = await parseBlob(audioFile);
 
+    // Extract BPM from metadata tags first
+    let bpm = metadata.common?.bpm || null;
+
+    // If no BPM in metadata, detect it from audio
+    if (!bpm) {
+      bpm = await detectBPMFromAudio(audioFile);
+    } else {
+      console.log(`✅ BPM from metadata: ${bpm}`);
+    }
+
     // Extract basic metadata
     const basicMetadata = {
       title: metadata.common?.title || '',
@@ -26,7 +76,8 @@ export const getComprehensiveMetadata = async (audioFile) => {
       genre: metadata.common?.genre?.[0] || '', // First genre if multiple
       trackNumber: metadata.common?.track?.no || '',
       composer: metadata.common?.composer || '',
-      comment: metadata.common?.comment?.[0] || ''
+      comment: metadata.common?.comment?.[0] || '',
+      bpm: bpm || null
     };
 
     // Extract technical metadata
@@ -61,6 +112,7 @@ export const getComprehensiveMetadata = async (audioFile) => {
       artist: completeMetadata.artist,
       duration: Math.floor(completeMetadata.duration),
       bitrate: completeMetadata.bitrate,
+      bpm: completeMetadata.bpm,
       fileSize: `${(completeMetadata.fileSize / 1024 / 1024).toFixed(2)}MB`
     });
 
@@ -222,6 +274,7 @@ export const createFormDataFromMetadata = (metadata) => {
     year: metadata.year ? metadata.year.toString() : '',
     genre: suggestGenre(metadata.genre) || '',
     duration_seconds: metadata.duration ? Math.floor(metadata.duration).toString() : '180',
+    bpm: metadata.bpm || null,
     // Technical info for display (not form fields)
     technical: {
       bitrate: metadata.bitrate,
