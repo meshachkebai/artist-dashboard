@@ -30,4 +30,9 @@ dist-ssr
 *.sln
 *.sw?
 
+*.sql
+*.md
+
 .temp/*
+.kiro/*
+docs/*

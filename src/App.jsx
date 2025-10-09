@@ -74,6 +74,7 @@ function App() {
     genre: '',
     customGenre: '',
     duration_seconds: '',
+    bpm: null,
     file: null,
     artwork: null,
     isSingle: false,
@@ -210,6 +211,7 @@ function App() {
       setIsDetectingMetadata(true);
       setMetadataError(null);
 
+
       try {
         console.log('🎵 Extracting comprehensive metadata from:', file.name);
 
@@ -249,11 +251,15 @@ function App() {
             album: formData.album || prev.album,
             year: formData.year || prev.year,
             genre: formData.genre || prev.genre, // Smart genre suggestion
-            duration_seconds: formData.duration_seconds || prev.duration_seconds
+            duration_seconds: formData.duration_seconds || prev.duration_seconds,
+            bpm: formData.bpm || prev.bpm
           }));
 
-          // Store technical metadata for display
-          setDetectedMetadata(formData.technical);
+          // Store technical metadata for display (including BPM)
+          setDetectedMetadata({
+            ...formData.technical,
+            bpm: formData.bpm
+          });
           setDetectedDuration(parseInt(formData.duration_seconds) || 0);
 
           // Check bitrate limit (128kbps max for beta/MVP)
@@ -439,6 +445,7 @@ function App() {
           file_path: audioFileUrl,
           artwork_path: artworkFileUrl,
           duration_seconds: uploadForm.duration_seconds ? parseInt(uploadForm.duration_seconds) : 180,
+          bpm: uploadForm.bpm ? parseInt(uploadForm.bpm) : null,
           created_at: new Date().toISOString(),
           artist_credits: artistCredits,
           has_explicit_language: uploadForm.has_explicit_language,
@@ -465,6 +472,7 @@ function App() {
         genre: '',
         customGenre: '',
         duration_seconds: '',
+        bpm: null,
         file: null,
         artwork: null,
         isSingle: false,
@@ -526,7 +534,7 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                {isAdmin ? '👑 Admin' : '🎵 Artist'}
+                {isAdmin ? 'Admin' : '🎵 Artist'}
               </div>
               <div style={{ fontSize: '1rem', fontWeight: '600' }}>
                 {artistName}
@@ -557,7 +565,19 @@ function App() {
           <form onSubmit={handleSubmit} className="upload-form">
             <div style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label htmlFor="file">Audio File *</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label htmlFor="file">Audio File *</label>
+                  {isDetectingMetadata && (
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid var(--border-color, #e0e0e0)',
+                      borderTop: '2px solid var(--brand-primary)',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }} />
+                  )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input type="checkbox" name="has_explicit_language" checked={uploadForm.has_explicit_language} onChange={handleInputChange} />
@@ -957,7 +977,7 @@ function App() {
                 marginTop: '1rem'
               }}>
                 <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>
-                  📊 Detected Audio Information
+                  Track Metadata
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.875rem' }}>
                   <div>
@@ -976,7 +996,7 @@ function App() {
                     <strong>File Size:</strong> {formatFileSize(detectedMetadata.fileSize)}
                   </div>
                   <div>
-                    <strong>Quality:</strong>
+                    <strong>Quality: </strong>
                     <span style={{
                       color: detectedMetadata.quality?.color || 'var(--text-secondary)',
                       fontWeight: '600'
@@ -984,6 +1004,17 @@ function App() {
                       {detectedMetadata.quality?.description || 'Unknown'}
                     </span>
                   </div>
+                  {detectedMetadata.bpm && (
+                    <div>
+                      <strong>BPM: </strong>
+                      <span style={{
+                        color: detectedMetadata.quality?.color || 'var(--text-secondary)',
+                        fontWeight: '600'
+                      }}>
+                        {detectedMetadata.bpm}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -991,15 +1022,20 @@ function App() {
             {/* Metadata detection status */}
             {isDetectingMetadata && (
               <div style={{
-                backgroundColor: 'var(--brand-bg, #e3f2fd)',
-                border: '1px solid var(--brand-primary)',
-                borderRadius: '8px',
-                padding: '0.75rem',
-                marginTop: '1rem',
-                color: 'var(--brand-primary)',
-                fontSize: '0.875rem'
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '1.5rem',
+                marginTop: '1rem'
               }}>
-                🔍 Analyzing audio file metadata...
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  border: '4px solid var(--border-color, #e0e0e0)',
+                  borderTop: '4px solid var(--brand-primary)',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
               </div>
             )}
 
