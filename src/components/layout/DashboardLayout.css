@@ -77,12 +77,18 @@
   color: var(--text-secondary, #666);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: 500;
 }
 
 .user-name {
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary, #333);
+}
+
+[data-theme="dark"] .user-name {
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .logout-btn {

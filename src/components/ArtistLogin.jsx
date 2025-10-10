@@ -16,7 +16,12 @@ const ArtistLogin = ({ onLogin }) => {
   const [code, setCode] = useState(['', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
   const inputRefs = useRef([]);
+
+  // Check if currently locked out
+  const isLockedOut = lockoutUntil && new Date() < lockoutUntil;
 
   const handleCodeChange = (value, index) => {
     if (value && !/^\d$/.test(value)) return;
@@ -43,6 +48,13 @@ const ArtistLogin = ({ onLogin }) => {
   const handleSubmit = async (submittedCode) => {
     const finalCode = submittedCode || code.join('');
 
+    // Check lockout
+    if (isLockedOut) {
+      const remainingSeconds = Math.ceil((lockoutUntil - new Date()) / 1000);
+      setError(`Too many attempts. Try again in ${remainingSeconds} seconds.`);
+      return;
+    }
+
     if (!artistName.trim()) {
       setError('Please enter your artist name');
       return;
@@ -66,12 +78,27 @@ const ArtistLogin = ({ onLogin }) => {
         .single();
 
       if (queryError || !data) {
-        setError('Invalid artist name or access code');
+        // Failed attempt - increment counter
+        const newAttemptCount = attemptCount + 1;
+        setAttemptCount(newAttemptCount);
+
+        // Lockout after 5 failed attempts
+        if (newAttemptCount >= 5) {
+          const lockoutTime = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+          setLockoutUntil(lockoutTime);
+          setError('Too many failed attempts. Locked out for 5 minutes.');
+        } else {
+          setError(`Invalid credentials. ${5 - newAttemptCount} attempts remaining.`);
+        }
+        
         setCode(['', '', '', '', '']);
         inputRefs.current[0]?.focus();
         return;
       }
 
+      // Success - reset attempts
+      setAttemptCount(0);
+      setLockoutUntil(null);
       onLogin(data.artist_name, data.is_admin || false);
     } catch (error) {
       console.error('Login error:', error);
@@ -208,26 +235,26 @@ const ArtistLogin = ({ onLogin }) => {
 
         <button
           onClick={() => handleSubmit()}
-          disabled={loading || !artistName.trim() || !code.every(d => d !== '')}
+          disabled={loading || !artistName.trim() || !code.every(d => d !== '') || isLockedOut}
           style={{
             width: '100%',
             padding: '14px',
             fontSize: '16px',
             fontWeight: '600',
             color: 'white',
-            background: loading || !artistName.trim() || !code.every(d => d !== '') ? '#ccc' : '#A14189',
+            background: loading || !artistName.trim() || !code.every(d => d !== '') || isLockedOut ? '#ccc' : '#A14189',
             border: 'none',
             borderRadius: '8px',
-            cursor: loading || !artistName.trim() || !code.every(d => d !== '') ? 'not-allowed' : 'pointer',
+            cursor: loading || !artistName.trim() || !code.every(d => d !== '') || isLockedOut ? 'not-allowed' : 'pointer',
             transition: 'background 0.2s'
           }}
           onMouseEnter={(e) => {
-            if (!loading && artistName.trim() && code.every(d => d !== '')) {
+            if (!loading && artistName.trim() && code.every(d => d !== '') && !isLockedOut) {
               e.target.style.background = '#8a3674';
             }
           }}
           onMouseLeave={(e) => {
-            if (!loading && artistName.trim() && code.every(d => d !== '')) {
+            if (!loading && artistName.trim() && code.every(d => d !== '') && !isLockedOut) {
               e.target.style.background = '#A14189';
             }
           }}

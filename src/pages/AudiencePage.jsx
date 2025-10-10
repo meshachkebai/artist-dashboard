@@ -18,7 +18,9 @@ const AudiencePage = ({ artistName, isAdmin }) => {
             <div className="page-header">
                 <div>
                     <h1>Audience</h1>
-                    <p className="page-subtitle">Understand your listeners</p>
+                    <p className="page-subtitle">
+                        {isAdmin ? 'All platform listeners and demographics' : 'Understand your listeners'}
+                    </p>
                 </div>
                 <div className="date-range-selector">
                     <button

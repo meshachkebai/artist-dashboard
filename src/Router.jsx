@@ -25,7 +25,7 @@ const AppRouter = () => {
           element={<DashboardLayout artistName={artistName} isAdmin={isAdmin} logout={logout} />}
         >
           <Route index element={<OverviewPage artistName={artistName} isAdmin={isAdmin} />} />
-          <Route path="tracks" element={<App />} />
+          <Route path="tracks" element={<App artistName={artistName} isAdmin={isAdmin} />} />
           <Route path="analytics" element={<AnalyticsPage artistName={artistName} isAdmin={isAdmin} />} />
           <Route path="audience" element={<AudiencePage artistName={artistName} isAdmin={isAdmin} />} />
           <Route path="geographic" element={<GeographicPage artistName={artistName} isAdmin={isAdmin} />} />

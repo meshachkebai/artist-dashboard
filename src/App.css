@@ -119,6 +119,30 @@
   color: var(--text-primary);
 }
 
+[data-theme="dark"] .form-group label {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* General label styling for dark mode - force visibility */
+[data-theme="dark"] label {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="dark"] .upload-section label,
+[data-theme="dark"] .upload-form label,
+[data-theme="dark"] .tracks-page label {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+/* Ensure all text in upload section is visible */
+[data-theme="dark"] .upload-section,
+[data-theme="dark"] .upload-form {
+  color: #ffffff;
+}
+
 .form-group input,
 .form-group select {
   background-color: var(--bg-secondary);

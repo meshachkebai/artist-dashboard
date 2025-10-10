@@ -1,5 +1,5 @@
 import React from 'react';
-import { useOverviewStats, useTopTracks } from '../hooks/useAnalytics';
+import { useOverviewStats, useTopTracks, useArtistUploadStats } from '../hooks/useAnalytics';
 import StatCard from '../components/shared/StatCard';
 import EmptyState from '../components/shared/EmptyState';
 import './OverviewPage.css';
@@ -9,6 +9,7 @@ const OverviewPage = ({ artistName, isAdmin }) => {
   const [trackLimit, setTrackLimit] = React.useState(10);
   const { data: stats, loading: statsLoading } = useOverviewStats(artistName, isAdmin, 30, refreshKey);
   const { data: topTracks, loading: tracksLoading } = useTopTracks(artistName, isAdmin, 30, trackLimit, refreshKey);
+  const { data: uploadStats, loading: uploadStatsLoading } = useArtistUploadStats(!isAdmin ? artistName : null);
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
@@ -51,12 +52,29 @@ const OverviewPage = ({ artistName, isAdmin }) => {
           loading={statsLoading}
         />
         <StatCard
-          label="Estimated Earnings"
+          label={isAdmin ? 'Estimated Earnings' : 'Your Earnings'}
           value={`K${stats?.estimatedRevenue || '0.00'}`}
           change="Last 30 days"
           loading={statsLoading}
         />
       </div>
+
+      {!isAdmin && uploadStats && (
+        <div className="artist-info-card">
+          <div className="artist-info-item">
+            <span className="info-label">Total Uploads</span>
+            <span className="info-value">{uploadStats.totalUploads} tracks</span>
+          </div>
+          <div className="artist-info-item">
+            <span className="info-label">Last Upload</span>
+            <span className="info-value">{uploadStats.lastUpload}</span>
+          </div>
+          <div className="artist-info-item">
+            <span className="info-label">Account Status</span>
+            <span className="info-value status-active">Active</span>
+          </div>
+        </div>
+      )}
 
       <div className="top-tracks-section">
         <div className="section-header">

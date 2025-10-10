@@ -13,7 +13,9 @@ const GeographicPage = ({ artistName, isAdmin }) => {
       <div className="page-header">
         <div>
           <h1>Geographic</h1>
-          <p className="page-subtitle">Where your fans are located</p>
+          <p className="page-subtitle">
+            {isAdmin ? 'Platform reach across Papua New Guinea' : 'Where your fans are located'}
+          </p>
         </div>
         <div className="date-range-selector">
           <button

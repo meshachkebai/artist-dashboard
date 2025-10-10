@@ -551,3 +551,46 @@ export const usePlatformStats = () => {
 
   return { data, loading, error };
 };
+
+
+export const useArtistUploadStats = (artistName) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchUploadStats = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: tracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('created_at')
+          .eq('artist', artistName)
+          .order('created_at', { ascending: false });
+
+        if (tracksError) throw tracksError;
+
+        const totalUploads = tracks?.length || 0;
+        const lastUpload = tracks && tracks.length > 0 ? tracks[0].created_at : null;
+
+        setData({
+          totalUploads,
+          lastUpload: lastUpload ? new Date(lastUpload).toLocaleDateString() : 'Never'
+        });
+      } catch (err) {
+        console.error('Error fetching upload stats:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (artistName) {
+      fetchUploadStats();
+    }
+  }, [artistName]);
+
+  return { data, loading, error };
+};

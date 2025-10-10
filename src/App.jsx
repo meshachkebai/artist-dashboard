@@ -3,6 +3,16 @@ import './App.css'
 import { createClient } from '@supabase/supabase-js'
 import { getTrackDuration, formatDuration, isValidDuration } from './utils/durationDetector'
 import { getComprehensiveMetadata, formatFileSize, getQualityInfo } from './utils/metadataDetector'
+import {
+  validateArtistName,
+  validateTrackTitle,
+  validateAlbumName,
+  validateGenre,
+  validateAudioFile,
+  validateArtworkFile,
+  validateYear,
+  validateBPM
+} from './utils/validation'
 import ProtectedDashboard from './components/ProtectedDashboard'
 import { useAuth } from './hooks/useAuth'
 
@@ -16,8 +26,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-function App() {
-  const { artistName, isAdmin, logout } = useAuth();
+function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
+  const { artistName: hookArtistName, isAdmin: hookIsAdmin, logout } = useAuth();
+
+  // Use props if provided (from router), otherwise fall back to hook
+  const artistName = propArtistName || hookArtistName;
+  const isAdmin = propIsAdmin !== undefined ? propIsAdmin : hookIsAdmin;
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploadForm, setUploadForm] = useState({
@@ -252,14 +266,52 @@ function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!uploadForm.title || !uploadForm.artist || !uploadForm.file) {
-      alert('Please fill in all required fields and select a file');
+    // Validate all inputs
+    const artistValidation = validateArtistName(uploadForm.artist);
+    if (!artistValidation.valid) {
+      alert(artistValidation.error);
       return;
     }
 
-    // Validate custom genre if "Other" is selected
-    if (uploadForm.genre === 'Other' && !uploadForm.customGenre.trim()) {
-      alert('Please enter a custom genre when "Other" is selected');
+    const titleValidation = validateTrackTitle(uploadForm.title);
+    if (!titleValidation.valid) {
+      alert(titleValidation.error);
+      return;
+    }
+
+    const albumValidation = validateAlbumName(uploadForm.album);
+    if (!albumValidation.valid) {
+      alert(albumValidation.error);
+      return;
+    }
+
+    const genreValidation = validateGenre(uploadForm.genre === 'Other' ? uploadForm.customGenre : uploadForm.genre);
+    if (!genreValidation.valid) {
+      alert(genreValidation.error);
+      return;
+    }
+
+    const audioValidation = validateAudioFile(uploadForm.file);
+    if (!audioValidation.valid) {
+      alert(audioValidation.error);
+      return;
+    }
+
+    const artworkValidation = validateArtworkFile(uploadForm.artwork);
+    if (!artworkValidation.valid) {
+      alert(artworkValidation.error);
+      return;
+    }
+
+    const yearValidation = validateYear(uploadForm.year);
+    if (!yearValidation.valid) {
+      alert(yearValidation.error);
+      return;
+    }
+
+    const bpmValidation = validateBPM(uploadForm.bpm);
+    if (!bpmValidation.valid) {
+      alert(bpmValidation.error);
       return;
     }
 
@@ -389,17 +441,17 @@ function App() {
 
       console.log('Artist credits to save:', artistCredits);
 
-      // Insert track record into mvp_content table
+      // Insert track record into mvp_content table with sanitized values
       const { data: trackData, error: insertError } = await supabase
         .from('mvp_content')
         .insert({
-          title: uploadForm.title,
-          artist: uploadForm.artist,
-          genre: finalGenre || 'Unknown',
+          title: titleValidation.sanitized,
+          artist: artistValidation.sanitized,
+          genre: genreValidation.sanitized || 'Unknown',
           file_path: audioFileUrl,
           artwork_path: artworkFileUrl,
           duration_seconds: uploadForm.duration_seconds ? parseInt(uploadForm.duration_seconds) : 180,
-          bpm: uploadForm.bpm ? parseInt(uploadForm.bpm) : null,
+          bpm: bpmValidation.sanitized,
           created_at: new Date().toISOString(),
           artist_credits: artistCredits,
           has_explicit_language: uploadForm.has_explicit_language,
@@ -557,7 +609,7 @@ function App() {
                   placeholder={isAdmin ? "Enter primary artist name" : artistName}
                   required
                   readOnly={!isAdmin}
-                  style={!isAdmin ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
+                  style={!isAdmin ? { cursor: 'not-allowed', opacity: 0.6 } : {}}
                 />
               </div>
 

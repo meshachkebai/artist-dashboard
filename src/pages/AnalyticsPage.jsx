@@ -15,7 +15,9 @@ const AnalyticsPage = ({ artistName, isAdmin }) => {
       <div className="page-header">
         <div>
           <h1>Analytics</h1>
-          <p className="page-subtitle">Detailed performance insights</p>
+          <p className="page-subtitle">
+            {isAdmin ? 'Platform-wide performance metrics' : 'Your track performance and trends'}
+          </p>
         </div>
         <div className="date-range-selector">
           <button
