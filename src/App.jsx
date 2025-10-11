@@ -1507,7 +1507,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     id="bulk-file-input"
                   />
                   <label htmlFor="bulk-file-input" style={{ cursor: 'pointer' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎵</div>
+                    <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}></div>
                     <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>
                       Drag & drop multiple audio files here
                     </p>
