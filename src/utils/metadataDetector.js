@@ -275,6 +275,7 @@ export const createFormDataFromMetadata = (metadata) => {
     genre: suggestGenre(metadata.genre) || '',
     duration_seconds: metadata.duration ? Math.floor(metadata.duration).toString() : '180',
     bpm: metadata.bpm || null,
+    track_number: metadata.trackNumber || null,
     // Technical info for display (not form fields)
     technical: {
       bitrate: metadata.bitrate,

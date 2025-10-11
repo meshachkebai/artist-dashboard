@@ -33,6 +33,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
   const artistName = propArtistName || hookArtistName;
   const isAdmin = propIsAdmin !== undefined ? propIsAdmin : hookIsAdmin;
   const [tracks, setTracks] = useState([]);
+  const [editingTrack, setEditingTrack] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploadForm, setUploadForm] = useState({
     title: '',
@@ -43,6 +45,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     customGenre: '',
     duration_seconds: '',
     bpm: null,
+    track_number: null,
     file: null,
     artwork: null,
     isSingle: false,
@@ -67,6 +70,20 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
   const [isDetectingDuration, setIsDetectingDuration] = useState(false);
   const [detectionError, setDetectionError] = useState(null);
 
+  // Bulk upload state
+  const [uploadMode, setUploadMode] = useState('single'); // 'single' or 'bulk'
+  const [bulkFiles, setBulkFiles] = useState([]);
+  const [bulkSharedMetadata, setBulkSharedMetadata] = useState({
+    album: '',
+    artist: '',
+    year: '',
+    genre: '',
+    artwork: null
+  });
+  const [bulkQueue, setBulkQueue] = useState([]);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+
   useEffect(() => {
     loadTracks();
   }, []);
@@ -81,19 +98,21 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     }
   }, [artistName, isAdmin]);
 
-  // Auto-populate album when single release is checked
+  // Auto-populate album and track number when single release is checked
   useEffect(() => {
     if (uploadForm.isSingle && uploadForm.title) {
-      // Single checked: Override with single format
+      // Single checked: Override with single format and set track number to 1
       setUploadForm(prev => ({
         ...prev,
-        album: `${prev.title} - Single`
+        album: `${prev.title} - Single`,
+        track_number: 1
       }));
     } else if (!uploadForm.isSingle) {
       // Single unchecked: Smart fallback to metadata or blank
       setUploadForm(prev => ({
         ...prev,
-        album: originalMetadata?.album || '' // Restore metadata album or clear
+        album: originalMetadata?.album || '', // Restore metadata album or clear
+        track_number: originalMetadata?.track_number || prev.track_number
       }));
     }
   }, [uploadForm.isSingle, uploadForm.title, originalMetadata]);
@@ -220,7 +239,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             year: formData.year || prev.year,
             genre: formData.genre || prev.genre, // Smart genre suggestion
             duration_seconds: formData.duration_seconds || prev.duration_seconds,
-            bpm: formData.bpm || prev.bpm
+            bpm: formData.bpm || prev.bpm,
+            track_number: formData.track_number || prev.track_number
           }));
 
           // Store technical metadata for display (including BPM)
@@ -291,10 +311,13 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       return;
     }
 
-    const audioValidation = validateAudioFile(uploadForm.file);
-    if (!audioValidation.valid) {
-      alert(audioValidation.error);
-      return;
+    // Only validate file if not editing (editing doesn't require new file)
+    if (!editingTrack) {
+      const audioValidation = validateAudioFile(uploadForm.file);
+      if (!audioValidation.valid) {
+        alert(audioValidation.error);
+        return;
+      }
     }
 
     const artworkValidation = validateArtworkFile(uploadForm.artwork);
@@ -441,33 +464,82 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
 
       console.log('Artist credits to save:', artistCredits);
 
-      // Insert track record into mvp_content table with sanitized values
-      const { data: trackData, error: insertError } = await supabase
-        .from('mvp_content')
-        .insert({
+      // Update or Insert track record
+      let trackData, dbError;
+
+      if (editingTrack) {
+        // Update existing track (all editable metadata)
+        const updateData = {
           title: titleValidation.sanitized,
           artist: artistValidation.sanitized,
+          album: albumValidation.sanitized || null,
+          year: yearValidation.sanitized || null,
           genre: genreValidation.sanitized || 'Unknown',
-          file_path: audioFileUrl,
-          artwork_path: artworkFileUrl,
           duration_seconds: uploadForm.duration_seconds ? parseInt(uploadForm.duration_seconds) : 180,
           bpm: bpmValidation.sanitized,
-          created_at: new Date().toISOString(),
+          track_number: uploadForm.track_number ? parseInt(uploadForm.track_number) : null,
           artist_credits: artistCredits,
           has_explicit_language: uploadForm.has_explicit_language,
           has_adult_themes: uploadForm.has_adult_themes,
-        })
-        .select()
-        .single();
+        };
 
-      if (insertError) {
-        console.error('❌ Database insert error:', insertError);
-        alert(`Upload failed: ${insertError.message}`);
+        // Only update artwork if new one provided
+        if (artworkFileUrl) {
+          updateData.artwork_path = artworkFileUrl;
+        }
+
+        const result = await supabase
+          .from('mvp_content')
+          .update(updateData)
+          .eq('id', editingTrack.id)
+          .select()
+          .single();
+
+        trackData = result.data;
+        dbError = result.error;
+
+        if (!dbError) {
+          alert(`Track "${uploadForm.title}" updated successfully!`);
+          setEditingTrack(null);
+        }
+      } else {
+        // Insert new track
+        const result = await supabase
+          .from('mvp_content')
+          .insert({
+            title: titleValidation.sanitized,
+            artist: artistValidation.sanitized,
+            album: albumValidation.sanitized || null,
+            year: yearValidation.sanitized || null,
+            genre: genreValidation.sanitized || 'Unknown',
+            file_path: audioFileUrl,
+            artwork_path: artworkFileUrl,
+            duration_seconds: uploadForm.duration_seconds ? parseInt(uploadForm.duration_seconds) : 180,
+            bpm: bpmValidation.sanitized,
+            track_number: uploadForm.track_number ? parseInt(uploadForm.track_number) : null,
+            created_at: new Date().toISOString(),
+            artist_credits: artistCredits,
+            has_explicit_language: uploadForm.has_explicit_language,
+            has_adult_themes: uploadForm.has_adult_themes,
+          })
+          .select()
+          .single();
+
+        trackData = result.data;
+        dbError = result.error;
+
+        if (!dbError) {
+          alert(`Track "${uploadForm.title}" uploaded successfully!`);
+        }
+      }
+
+      if (dbError) {
+        console.error('❌ Database error:', dbError);
+        alert(`Operation failed: ${dbError.message}`);
         return;
       }
 
-      alert(`Track "${uploadForm.title}" uploaded successfully!`);
-      console.log('✅ Upload successful:', trackData);
+      console.log('✅ Operation successful:', trackData);
 
       // Reset form
       setUploadForm({
@@ -479,6 +551,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         customGenre: '',
         duration_seconds: '',
         bpm: null,
+        track_number: null,
         file: null,
         artwork: null,
         isSingle: false,
@@ -517,6 +590,286 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     }
   };
 
+  const handleDeleteTrack = async (trackId) => {
+    if (!deleteConfirm || deleteConfirm !== trackId) {
+      setDeleteConfirm(trackId);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { error } = await supabase
+        .from('mvp_content')
+        .delete()
+        .eq('id', trackId);
+
+      if (error) {
+        console.error('Delete error:', error);
+        alert('Failed to delete track');
+        return;
+      }
+
+      alert('Track deleted successfully');
+      setDeleteConfirm(null);
+      loadTracks();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert('Failed to delete track');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditTrack = (track) => {
+    setEditingTrack(track);
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Parse artist_credits if exists
+    const credits = track.artist_credits || {};
+    const hasHeadliners = credits.headliners && credits.headliners.length > 0;
+    const hasFeaturing = credits.featuring && credits.featuring.length > 0;
+    const hasContributing = credits.contributing && credits.contributing.length > 0;
+
+    // Populate form with ALL track data
+    setUploadForm({
+      title: track.title,
+      artist: track.artist,
+      album: track.album || '',
+      year: track.year || '',
+      genre: track.genre || '',
+      customGenre: '',
+      duration_seconds: track.duration_seconds || '',
+      bpm: track.bpm || null,
+      track_number: track.track_number || null,
+      file: null, // Can't edit file
+      artwork: null, // Can upload new artwork
+      isSingle: track.album?.includes('- Single') || false,
+      allowMultipleHeadliners: hasHeadliners,
+      hasFeaturing: hasFeaturing,
+      hasContributing: hasContributing,
+      headliners: hasHeadliners ? credits.headliners.map(h => h.name) : [''],
+      featuring: hasFeaturing ? credits.featuring.map(f => f.name) : [''],
+      contributing: hasContributing ? credits.contributing.map(c => c.name) : [''],
+      has_explicit_language: track.has_explicit_language || false,
+      has_adult_themes: track.has_adult_themes || false,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTrack(null);
+    // Reset form
+    setUploadForm({
+      title: '',
+      artist: '',
+      album: '',
+      year: '',
+      genre: '',
+      customGenre: '',
+      duration_seconds: '',
+      bpm: null,
+      track_number: null,
+      file: null,
+      artwork: null,
+      isSingle: false,
+      allowMultipleHeadliners: false,
+      hasFeaturing: false,
+      hasContributing: false,
+      headliners: [''],
+      featuring: [''],
+      contributing: [''],
+      has_explicit_language: false,
+      has_adult_themes: false
+    });
+  };
+
+  // Bulk upload handlers
+  const handleBulkFilesSelect = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    setBulkFiles(files);
+    setLoading(true);
+
+    // Process each file to extract metadata
+    const processedQueue = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const metadata = await getComprehensiveMetadata(file);
+        const { createFormDataFromMetadata } = await import('./utils/metadataDetector');
+        const formData = createFormDataFromMetadata(metadata);
+
+        processedQueue.push({
+          id: `${Date.now()}-${i}`,
+          file: file,
+          title: formData.title || file.name.replace(/\.[^/.]+$/, ''),
+          track_number: formData.track_number || (i + 1),
+          duration_seconds: formData.duration_seconds,
+          bpm: formData.bpm,
+          featuring: [''],
+          has_explicit_language: false,
+          has_adult_themes: false,
+          metadata: formData.technical
+        });
+      } catch (error) {
+        console.error(`Failed to process ${file.name}:`, error);
+        processedQueue.push({
+          id: `${Date.now()}-${i}`,
+          file: file,
+          title: file.name.replace(/\.[^/.]+$/, ''),
+          track_number: i + 1,
+          duration_seconds: '180',
+          bpm: null,
+          featuring: [''],
+          has_explicit_language: false,
+          has_adult_themes: false,
+          metadata: null,
+          error: error.message
+        });
+      }
+    }
+
+    setBulkQueue(processedQueue);
+    setLoading(false);
+  };
+
+  const handleBulkSharedMetadataChange = (e) => {
+    const { name, value, files } = e.target;
+    setBulkSharedMetadata(prev => ({
+      ...prev,
+      [name]: files ? files[0] : value
+    }));
+  };
+
+  const handleBulkQueueItemChange = (id, field, value) => {
+    setBulkQueue(prev => prev.map(item =>
+      item.id === id ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const handleRemoveFromQueue = (id) => {
+    setBulkQueue(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleBulkUpload = async () => {
+    if (bulkQueue.length === 0) {
+      alert('No tracks in queue');
+      return;
+    }
+
+    // Validate shared metadata
+    if (!bulkSharedMetadata.album) {
+      alert('Please enter an album name');
+      return;
+    }
+    if (!bulkSharedMetadata.artist) {
+      alert('Please enter an artist name');
+      return;
+    }
+
+    setBulkUploading(true);
+    setBulkProgress({ current: 0, total: bulkQueue.length });
+
+    const results = { success: [], failed: [] };
+
+    for (let i = 0; i < bulkQueue.length; i++) {
+      const track = bulkQueue[i];
+      setBulkProgress({ current: i + 1, total: bulkQueue.length });
+
+      try {
+        // Upload audio file
+        const audioFileName = `${Date.now()}-${track.file.name}`;
+        const { data: audioData, error: audioError } = await supabase.storage
+          .from('audio-files')
+          .upload(audioFileName, track.file);
+
+        if (audioError) throw audioError;
+
+        const { data: { publicUrl: audioFileUrl } } = supabase.storage
+          .from('audio-files')
+          .getPublicUrl(audioFileName);
+
+        // Upload shared artwork if provided
+        let artworkFileUrl = null;
+        if (bulkSharedMetadata.artwork && i === 0) {
+          const artworkFileName = `${Date.now()}-${bulkSharedMetadata.artwork.name}`;
+          const { data: artworkData, error: artworkError } = await supabase.storage
+            .from('artwork-images')
+            .upload(artworkFileName, bulkSharedMetadata.artwork);
+
+          if (!artworkError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('artwork-images')
+              .getPublicUrl(artworkFileName);
+            artworkFileUrl = publicUrl;
+          }
+        }
+
+        // Prepare artist credits
+        const artistCredits = {
+          headliners: [],
+          featuring: track.featuring.filter(f => f.trim()).map(name => ({ name: name.trim() })),
+          contributing: []
+        };
+
+        // Insert track
+        const { data, error } = await supabase
+          .from('mvp_content')
+          .insert({
+            title: track.title,
+            artist: bulkSharedMetadata.artist,
+            album: bulkSharedMetadata.album,
+            year: bulkSharedMetadata.year || null,
+            genre: bulkSharedMetadata.genre || 'Unknown',
+            file_path: audioFileUrl,
+            artwork_path: artworkFileUrl,
+            duration_seconds: parseInt(track.duration_seconds) || 180,
+            bpm: track.bpm,
+            track_number: track.track_number,
+            artist_credits: artistCredits,
+            has_explicit_language: track.has_explicit_language,
+            has_adult_themes: track.has_adult_themes,
+            created_at: new Date().toISOString()
+          });
+
+        if (error) throw error;
+
+        results.success.push(track.title);
+      } catch (error) {
+        console.error(`Failed to upload ${track.title}:`, error);
+        results.failed.push({ title: track.title, error: error.message });
+      }
+    }
+
+    setBulkUploading(false);
+    setBulkProgress({ current: 0, total: 0 });
+
+    // Show results
+    const message = `
+Bulk Upload Complete!
+✓ Success: ${results.success.length} tracks
+${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''}
+    `.trim();
+
+    alert(message);
+
+    if (results.success.length > 0) {
+      // Reset bulk upload
+      setBulkQueue([]);
+      setBulkFiles([]);
+      setBulkSharedMetadata({
+        album: '',
+        artist: '',
+        year: '',
+        genre: '',
+        artwork: null
+      });
+      loadTracks();
+    }
+  };
+
   return (
     <div className="tracks-page">
       <div className="page-header">
@@ -526,502 +879,875 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
 
       <div className="container">
         <div className="upload-section card">
-          <h2 style={{ color: 'var(--brand-primary)' }}>Upload New Track</h2>
-          <form onSubmit={handleSubmit} className="upload-form">
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label htmlFor="file">Audio File *</label>
-                  {isDetectingMetadata && (
-                    <div style={{
-                      width: '16px',
-                      height: '16px',
-                      border: '2px solid var(--border-color, #e0e0e0)',
-                      borderTop: '2px solid var(--brand-primary)',
-                      borderRadius: '50%',
-                      animation: 'spin 0.8s linear infinite'
-                    }} />
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input type="checkbox" name="has_explicit_language" checked={uploadForm.has_explicit_language} onChange={handleInputChange} />
-                    Explicit Language
-                  </label>
-                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input type="checkbox" name="has_adult_themes" checked={uploadForm.has_adult_themes} onChange={handleInputChange} />
-                    Adult Themes
-                  </label>
-                </div>
-              </div>
-              <div className="form-group">
-                <input
-                  type="file"
-                  id="file-input"
-                  name="file"
-                  onChange={handleFileChange}
-                  accept="audio/*"
-                  required
-                />
-              </div>
+          {/* Tab Navigation */}
+          {!editingTrack && (
+            <div style={{
+              display: 'flex',
+              gap: '0.5rem',
+              marginBottom: '1.5rem',
+              borderBottom: '2px solid var(--border-color, #e0e0e0)'
+            }}>
+              <button
+                type="button"
+                onClick={() => setUploadMode('single')}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: uploadMode === 'single' ? '3px solid var(--brand-primary)' : '3px solid transparent',
+                  color: uploadMode === 'single' ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                  fontWeight: uploadMode === 'single' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Single Upload
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMode('bulk')}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: uploadMode === 'bulk' ? '3px solid var(--brand-primary)' : '3px solid transparent',
+                  color: uploadMode === 'bulk' ? 'var(--brand-primary)' : 'var(--text-secondary)',
+                  fontWeight: uploadMode === 'bulk' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Bulk Upload
+              </button>
             </div>
+          )}
 
-            <div className="form-group">
-              <label htmlFor="title">Track Title *</label>
-              <input
-                type="text"
-                id="title"
-                name="title"
-                value={uploadForm.title}
-                onChange={handleInputChange}
-                required
-                placeholder="Enter track title"
-              />
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ color: 'var(--brand-primary)', margin: 0 }}>
+              {editingTrack ? 'Edit Track' : uploadMode === 'single' ? 'Upload New Track' : 'Bulk Upload Tracks'}
+            </h2>
+            {editingTrack && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="btn-cancel"
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
 
-            {/* Artist Roles Section */}
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label htmlFor="artist">Artist Name</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input type="checkbox" name="allowMultipleHeadliners" checked={uploadForm.allowMultipleHeadliners} onChange={handleInputChange} />
-                    Also Headlining
-                  </label>
-                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input type="checkbox" name="hasFeaturing" checked={uploadForm.hasFeaturing} onChange={handleInputChange} />
-                    Featuring
-                  </label>
-                  <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input type="checkbox" name="hasContributing" checked={uploadForm.hasContributing} onChange={handleInputChange} />
-                    Contributing
-                  </label>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <input
-                  type="text"
-                  id="artist"
-                  name="artist"
-                  value={isAdmin ? uploadForm.artist : artistName}
-                  onChange={handleInputChange}
-                  placeholder={isAdmin ? "Enter primary artist name" : artistName}
-                  required
-                  readOnly={!isAdmin}
-                  style={!isAdmin ? { cursor: 'not-allowed', opacity: 0.6 } : {}}
-                />
-              </div>
-
-              {/* Dynamic Multiple Headliners - Directly under artist */}
-              {uploadForm.allowMultipleHeadliners && (
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <label>Headlining Artists</label>
-                    <button
-                      type="button"
-                      onClick={() => addArtistField('headliners')}
-                      style={{
-                        fontSize: '1.2rem',
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--brand-primary)',
-                        cursor: 'pointer',
-                        padding: '0.25rem'
-                      }}
-                      title="Add another headlining artist"
-                    >
-                      +
-                    </button>
+          {/* Single Upload Form */}
+          {(uploadMode === 'single' || editingTrack) && (
+            <form onSubmit={handleSubmit} className="upload-form">
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label htmlFor="file">Audio File *</label>
+                    {isDetectingMetadata && (
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid var(--border-color, #e0e0e0)',
+                        borderTop: '2px solid var(--brand-primary)',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite'
+                      }} />
+                    )}
                   </div>
-
-                  {/* Dynamic input fields */}
-                  {uploadForm.headliners.map((artist, index) => (
-                    <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <label style={{ fontSize: '0.875rem', cursor: editingTrack && uploadForm.has_explicit_language ? 'not-allowed' : 'pointer', opacity: editingTrack && uploadForm.has_explicit_language ? 0.5 : 1 }}>
                       <input
-                        value={artist}
-                        onChange={(e) => updateArtistField('headliners', index, e.target.value)}
-                        placeholder={`Headlining Artist ${index + 1}`}
-                        style={{ flex: 1 }}
+                        type="checkbox"
+                        name="has_explicit_language"
+                        checked={uploadForm.has_explicit_language}
+                        onChange={handleInputChange}
+                        disabled={editingTrack && uploadForm.has_explicit_language}
                       />
-                      {uploadForm.headliners.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeArtistField('headliners', index)}
-                          style={{
-                            background: 'var(--danger, #dc3545)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '0.5rem',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            width: '32px',
-                            height: '32px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          title="Remove this artist"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Dynamic Featuring Artists - Directly under artist */}
-              {uploadForm.hasFeaturing && (
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <label>Featuring Artists</label>
-                    <button
-                      type="button"
-                      onClick={() => addArtistField('featuring')}
-                      style={{
-                        fontSize: '1.2rem',
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--brand-primary)',
-                        cursor: 'pointer',
-                        padding: '0.25rem'
-                      }}
-                      title="Add another featuring artist"
-                    >
-                      +
-                    </button>
+                      Explicit Language
+                    </label>
+                    <label style={{ fontSize: '0.875rem', cursor: editingTrack && uploadForm.has_adult_themes ? 'not-allowed' : 'pointer', opacity: editingTrack && uploadForm.has_adult_themes ? 0.5 : 1 }}>
+                      <input
+                        type="checkbox"
+                        name="has_adult_themes"
+                        checked={uploadForm.has_adult_themes}
+                        onChange={handleInputChange}
+                        disabled={editingTrack && uploadForm.has_adult_themes}
+                      />
+                      Adult Themes
+                    </label>
                   </div>
-
-                  {/* Dynamic input fields */}
-                  {uploadForm.featuring.map((artist, index) => (
-                    <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        value={artist}
-                        onChange={(e) => updateArtistField('featuring', index, e.target.value)}
-                        placeholder={`Featuring Artist ${index + 1}`}
-                        style={{ flex: 1 }}
-                      />
-                      {uploadForm.featuring.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeArtistField('featuring', index)}
-                          style={{
-                            background: 'var(--danger, #dc3545)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '0.5rem',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            width: '32px',
-                            height: '32px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          title="Remove this artist"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
                 </div>
-              )}
-
-              {/* Dynamic Contributing Artists - Directly under artist */}
-              {uploadForm.hasContributing && (
                 <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <label>Contributing Artists</label>
-                    <button
-                      type="button"
-                      onClick={() => addArtistField('contributing')}
-                      style={{
-                        fontSize: '1.2rem',
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--brand-primary)',
-                        cursor: 'pointer',
-                        padding: '0.25rem'
-                      }}
-                      title="Add another contributing artist"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  {/* Dynamic input fields */}
-                  {uploadForm.contributing.map((artist, index) => (
-                    <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        value={artist}
-                        onChange={(e) => updateArtistField('contributing', index, e.target.value)}
-                        placeholder={`Contributing Artist ${index + 1}`}
-                        style={{ flex: 1 }}
-                      />
-                      {uploadForm.contributing.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeArtistField('contributing', index)}
-                          style={{
-                            background: 'var(--danger, #dc3545)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '0.5rem',
-                            cursor: 'pointer',
-                            fontSize: '1rem',
-                            width: '32px',
-                            height: '32px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          title="Remove this artist"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Album and Single Release Checkbox */}
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label htmlFor="album">Album</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label htmlFor="isSingle" style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-                    Is this a single release?
-                  </label>
                   <input
-                    type="checkbox"
-                    id="isSingle"
-                    name="isSingle"
-                    checked={uploadForm.isSingle}
-                    onChange={handleInputChange}
+                    type="file"
+                    id="file-input"
+                    name="file"
+                    onChange={handleFileChange}
+                    accept="audio/*"
+                    required={!editingTrack}
+                    disabled={editingTrack}
+                    style={editingTrack ? { cursor: 'not-allowed', opacity: 0.5, background: 'var(--bg-tertiary)' } : {}}
                   />
                 </div>
               </div>
+
               <div className="form-group">
+                <label htmlFor="title">Track Title *</label>
                 <input
                   type="text"
-                  id="album"
-                  name="album"
-                  value={uploadForm.album}
+                  id="title"
+                  name="title"
+                  value={uploadForm.title}
                   onChange={handleInputChange}
-                  disabled={uploadForm.isSingle}
-                  placeholder={uploadForm.isSingle ? "Auto-generated for singles" : "Enter album name"}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="year">Year</label>
-              <input
-                type="number"
-                id="year"
-                name="year"
-                value={uploadForm.year}
-                onChange={handleInputChange}
-                placeholder="2024"
-                min="1900"
-                max={new Date().getFullYear() + 1}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="genre">Genre</label>
-              <select
-                id="genre"
-                name="genre"
-                value={uploadForm.genre}
-                onChange={handleInputChange}
-              >
-                <option value="">Select genre</option>
-                <option value="Pop">Pop</option>
-                <option value="Rock">Rock</option>
-                <option value="Jazz">Jazz</option>
-                <option value="Electronic">Electronic</option>
-                <option value="Hip-Hop">Hip-Hop</option>
-                <option value="Classical">Classical</option>
-                <option value="Country">Country</option>
-                <option value="R&B">R&B</option>
-                <option value="Reggae">Reggae</option>
-                <option value="Blues">Blues</option>
-                <option value="Folk">Folk</option>
-                <option value="Indie">Indie</option>
-                <option value="Alternative">Alternative</option>
-                <option value="Ambient">Ambient</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            {/* Conditional custom genre input */}
-            {uploadForm.genre === 'Other' && (
-              <div className="form-group">
-                <label htmlFor="customGenre">Custom Genre *</label>
-                <input
-                  type="text"
-                  id="customGenre"
-                  name="customGenre"
-                  value={uploadForm.customGenre}
-                  onChange={handleInputChange}
-                  placeholder="Enter custom genre (e.g., Progressive Death Metal)"
                   required
+                  placeholder="Enter track title"
                 />
               </div>
-            )}
 
+              {/* Artist Roles Section */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label htmlFor="artist">Artist Name</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
+                      <input type="checkbox" name="allowMultipleHeadliners" checked={uploadForm.allowMultipleHeadliners} onChange={handleInputChange} />
+                      Also Headlining
+                    </label>
+                    <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
+                      <input type="checkbox" name="hasFeaturing" checked={uploadForm.hasFeaturing} onChange={handleInputChange} />
+                      Featuring
+                    </label>
+                    <label style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
+                      <input type="checkbox" name="hasContributing" checked={uploadForm.hasContributing} onChange={handleInputChange} />
+                      Contributing
+                    </label>
+                  </div>
+                </div>
 
+                <div className="form-group">
+                  <input
+                    type="text"
+                    id="artist"
+                    name="artist"
+                    value={isAdmin ? uploadForm.artist : artistName}
+                    onChange={handleInputChange}
+                    placeholder={isAdmin ? "Enter primary artist name" : artistName}
+                    required
+                    readOnly={!isAdmin}
+                    style={!isAdmin ? { cursor: 'not-allowed', opacity: 0.6 } : {}}
+                  />
+                </div>
 
-            <div className="form-group">
-              <label htmlFor="duration_seconds">
-                Duration (seconds)
-                {isDetectingDuration && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--brand-primary)' }}>
-                    Detecting...
-                  </span>
+                {/* Dynamic Multiple Headliners - Directly under artist */}
+                {uploadForm.allowMultipleHeadliners && (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <label>Headlining Artists</label>
+                      <button
+                        type="button"
+                        onClick={() => addArtistField('headliners')}
+                        style={{
+                          fontSize: '1.2rem',
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--brand-primary)',
+                          cursor: 'pointer',
+                          padding: '0.25rem'
+                        }}
+                        title="Add another headlining artist"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    {/* Dynamic input fields */}
+                    {uploadForm.headliners.map((artist, index) => (
+                      <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          value={artist}
+                          onChange={(e) => updateArtistField('headliners', index, e.target.value)}
+                          placeholder={`Headlining Artist ${index + 1}`}
+                          style={{ flex: 1 }}
+                        />
+                        {uploadForm.headliners.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeArtistField('headliners', index)}
+                            style={{
+                              background: 'var(--danger, #dc3545)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              fontSize: '1rem',
+                              width: '32px',
+                              height: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            title="Remove this artist"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
-                {detectedDuration > 0 && !isDetectingDuration && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--success, #28a745)' }}>
-                    ✓ Auto-detected ({formatDuration(detectedDuration * 1000)})
-                  </span>
+
+                {/* Dynamic Featuring Artists - Directly under artist */}
+                {uploadForm.hasFeaturing && (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <label>Featuring Artists</label>
+                      <button
+                        type="button"
+                        onClick={() => addArtistField('featuring')}
+                        style={{
+                          fontSize: '1.2rem',
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--brand-primary)',
+                          cursor: 'pointer',
+                          padding: '0.25rem'
+                        }}
+                        title="Add another featuring artist"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    {/* Dynamic input fields */}
+                    {uploadForm.featuring.map((artist, index) => (
+                      <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          value={artist}
+                          onChange={(e) => updateArtistField('featuring', index, e.target.value)}
+                          placeholder={`Featuring Artist ${index + 1}`}
+                          style={{ flex: 1 }}
+                        />
+                        {uploadForm.featuring.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeArtistField('featuring', index)}
+                            style={{
+                              background: 'var(--danger, #dc3545)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              fontSize: '1rem',
+                              width: '32px',
+                              height: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            title="Remove this artist"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
-                {detectionError && (
-                  <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--danger, #dc3545)' }}>
-                    ⚠ Detection failed
-                  </span>
+
+                {/* Dynamic Contributing Artists - Directly under artist */}
+                {uploadForm.hasContributing && (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <label>Contributing Artists</label>
+                      <button
+                        type="button"
+                        onClick={() => addArtistField('contributing')}
+                        style={{
+                          fontSize: '1.2rem',
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--brand-primary)',
+                          cursor: 'pointer',
+                          padding: '0.25rem'
+                        }}
+                        title="Add another contributing artist"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    {/* Dynamic input fields */}
+                    {uploadForm.contributing.map((artist, index) => (
+                      <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          value={artist}
+                          onChange={(e) => updateArtistField('contributing', index, e.target.value)}
+                          placeholder={`Contributing Artist ${index + 1}`}
+                          style={{ flex: 1 }}
+                        />
+                        {uploadForm.contributing.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeArtistField('contributing', index)}
+                            style={{
+                              background: 'var(--danger, #dc3545)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              fontSize: '1rem',
+                              width: '32px',
+                              height: '32px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            title="Remove this artist"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </label>
-              <input
-                type="number"
-                id="duration_seconds"
-                name="duration_seconds"
-                value={uploadForm.duration_seconds}
-                onChange={handleInputChange}
-                placeholder="180"
-                min="1"
-                disabled={detectedDuration > 0 && !detectionError}
-                title={detectedDuration > 0 && !detectionError ? 'Duration automatically detected from audio file' : ''}
-                style={{
-                  borderColor: detectedDuration > 0 && !detectionError ? 'var(--success, #28a745)' : '',
-                  color: detectedDuration > 0 && !detectionError ? 'var(--success, #28a745)' : ''
-                }}
-              />
-              {detectionError && (
-                <div style={{ fontSize: '12px', color: 'var(--danger, #dc3545)', marginTop: '4px' }}>
-                  {detectionError}. Using default duration (3:00).
+              </div>
+
+              {/* Album and Single Release Checkbox */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label htmlFor="album">Album</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label htmlFor="isSingle" style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
+                      Is this a single release?
+                    </label>
+                    <input
+                      type="checkbox"
+                      id="isSingle"
+                      name="isSingle"
+                      checked={uploadForm.isSingle}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <input
+                    type="text"
+                    id="album"
+                    name="album"
+                    value={uploadForm.album}
+                    onChange={handleInputChange}
+                    disabled={uploadForm.isSingle}
+                    placeholder={uploadForm.isSingle ? "Auto-generated for singles" : "Enter album name"}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="track_number">
+                  Track Number
+                  {uploadForm.track_number && !uploadForm.isSingle && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--success, #28a745)' }}>
+                      ✓ Auto-detected
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  id="track_number"
+                  name="track_number"
+                  value={uploadForm.track_number || ''}
+                  onChange={handleInputChange}
+                  placeholder={uploadForm.isSingle ? "1" : "e.g., 1, 2, 3..."}
+                  min="1"
+                  disabled={uploadForm.isSingle || editingTrack}
+                  title={uploadForm.isSingle ? 'Singles are always track #1' : (editingTrack ? 'Track number cannot be changed when editing' : '')}
+                  style={{
+                    cursor: uploadForm.isSingle || editingTrack ? 'not-allowed' : '',
+                    opacity: uploadForm.isSingle || editingTrack ? 0.6 : 1,
+                    borderColor: uploadForm.track_number && !uploadForm.isSingle ? 'var(--success, #28a745)' : ''
+                  }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="year">Year</label>
+                <input
+                  type="number"
+                  id="year"
+                  name="year"
+                  value={uploadForm.year}
+                  onChange={handleInputChange}
+                  placeholder="2024"
+                  min="1900"
+                  max={new Date().getFullYear() + 1}
+                  disabled={editingTrack}
+                  style={editingTrack ? { cursor: 'not-allowed', opacity: 0.6 } : {}}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="genre">Genre</label>
+                <select
+                  id="genre"
+                  name="genre"
+                  value={uploadForm.genre}
+                  onChange={handleInputChange}
+                >
+                  <option value="">Select genre</option>
+                  <option value="Pop">Pop</option>
+                  <option value="Rock">Rock</option>
+                  <option value="Jazz">Jazz</option>
+                  <option value="Electronic">Electronic</option>
+                  <option value="Hip-Hop">Hip-Hop</option>
+                  <option value="Classical">Classical</option>
+                  <option value="Country">Country</option>
+                  <option value="R&B">R&B</option>
+                  <option value="Reggae">Reggae</option>
+                  <option value="Blues">Blues</option>
+                  <option value="Folk">Folk</option>
+                  <option value="Indie">Indie</option>
+                  <option value="Alternative">Alternative</option>
+                  <option value="Ambient">Ambient</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Conditional custom genre input */}
+              {uploadForm.genre === 'Other' && (
+                <div className="form-group">
+                  <label htmlFor="customGenre">Custom Genre *</label>
+                  <input
+                    type="text"
+                    id="customGenre"
+                    name="customGenre"
+                    value={uploadForm.customGenre}
+                    onChange={handleInputChange}
+                    placeholder="Enter custom genre (e.g., Progressive Death Metal)"
+                    required
+                  />
                 </div>
               )}
-            </div>
 
-            <div className="form-group">
-              <label htmlFor="artwork">Artwork Image</label>
-              <input
-                type="file"
-                id="artwork-input"
-                name="artwork"
-                onChange={handleFileChange}
-                accept="image/*"
-              />
-            </div>
 
-            {/* Technical metadata display */}
-            {detectedMetadata && (
-              <div className="metadata-display" style={{
-                backgroundColor: 'var(--bg-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                padding: '1rem',
-                marginTop: '1rem'
-              }}>
-                <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>
-                  Track Metadata
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.875rem' }}>
-                  <div>
-                    <strong>Format:</strong> {detectedMetadata.codec || 'Unknown'}
-                  </div>
-                  <div>
-                    <strong>Bitrate:</strong> {detectedMetadata.bitrate ? `${Math.round(detectedMetadata.bitrate / 1000)}kbps` : 'Unknown'}
-                  </div>
-                  <div>
-                    <strong>Sample Rate:</strong> {detectedMetadata.sampleRate ? `${detectedMetadata.sampleRate}Hz` : 'Unknown'}
-                  </div>
-                  <div>
-                    <strong>Channels:</strong> {detectedMetadata.channels || 'Unknown'}
-                  </div>
-                  <div>
-                    <strong>File Size:</strong> {formatFileSize(detectedMetadata.fileSize)}
-                  </div>
-                  <div>
-                    <strong>Quality: </strong>
-                    <span style={{
-                      color: detectedMetadata.quality?.color || 'var(--text-secondary)',
-                      fontWeight: '600'
-                    }}>
-                      {detectedMetadata.quality?.description || 'Unknown'}
+
+              <div className="form-group">
+                <label htmlFor="duration_seconds">
+                  Duration (seconds)
+                  {isDetectingDuration && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--brand-primary)' }}>
+                      Detecting...
                     </span>
+                  )}
+                  {detectedDuration > 0 && !isDetectingDuration && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--success, #28a745)' }}>
+                      ✓ Auto-detected ({formatDuration(detectedDuration * 1000)})
+                    </span>
+                  )}
+                  {detectionError && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--danger, #dc3545)' }}>
+                      ⚠ Detection failed
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="number"
+                  id="duration_seconds"
+                  name="duration_seconds"
+                  value={uploadForm.duration_seconds}
+                  onChange={handleInputChange}
+                  placeholder="180"
+                  min="1"
+                  disabled={editingTrack || (detectedDuration > 0 && !detectionError)}
+                  title={editingTrack ? 'Duration cannot be changed when editing' : (detectedDuration > 0 && !detectionError ? 'Duration automatically detected from audio file' : '')}
+                  style={{
+                    borderColor: detectedDuration > 0 && !detectionError ? 'var(--success, #28a745)' : '',
+                    color: detectedDuration > 0 && !detectionError ? 'var(--success, #28a745)' : '',
+                    cursor: editingTrack ? 'not-allowed' : '',
+                    opacity: editingTrack ? 0.6 : 1
+                  }}
+                />
+                {detectionError && (
+                  <div style={{ fontSize: '12px', color: 'var(--danger, #dc3545)', marginTop: '4px' }}>
+                    {detectionError}. Using default duration (3:00).
                   </div>
-                  {detectedMetadata.bpm && (
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="artwork">Artwork Image</label>
+                <input
+                  type="file"
+                  id="artwork-input"
+                  name="artwork"
+                  onChange={handleFileChange}
+                  accept="image/*"
+                  disabled={editingTrack}
+                  style={editingTrack ? { cursor: 'not-allowed', opacity: 0.5, background: 'var(--bg-tertiary)' } : {}}
+                />
+              </div>
+
+              {/* Technical metadata display */}
+              {detectedMetadata && (
+                <div className="metadata-display" style={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  marginTop: '1rem'
+                }}>
+                  <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>
+                    Track Metadata
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.875rem' }}>
                     <div>
-                      <strong>BPM: </strong>
+                      <strong>Format:</strong> {detectedMetadata.codec || 'Unknown'}
+                    </div>
+                    <div>
+                      <strong>Bitrate:</strong> {detectedMetadata.bitrate ? `${Math.round(detectedMetadata.bitrate / 1000)}kbps` : 'Unknown'}
+                    </div>
+                    <div>
+                      <strong>Sample Rate:</strong> {detectedMetadata.sampleRate ? `${detectedMetadata.sampleRate}Hz` : 'Unknown'}
+                    </div>
+                    <div>
+                      <strong>Channels:</strong> {detectedMetadata.channels || 'Unknown'}
+                    </div>
+                    <div>
+                      <strong>File Size:</strong> {formatFileSize(detectedMetadata.fileSize)}
+                    </div>
+                    <div>
+                      <strong>Quality: </strong>
                       <span style={{
                         color: detectedMetadata.quality?.color || 'var(--text-secondary)',
                         fontWeight: '600'
                       }}>
-                        {detectedMetadata.bpm}
+                        {detectedMetadata.quality?.description || 'Unknown'}
                       </span>
                     </div>
+                    {detectedMetadata.bpm && (
+                      <div>
+                        <strong>BPM: </strong>
+                        <span style={{
+                          color: detectedMetadata.quality?.color || 'var(--text-secondary)',
+                          fontWeight: '600'
+                        }}>
+                          {detectedMetadata.bpm}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Metadata detection status */}
+              {isDetectingMetadata && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  padding: '1.5rem',
+                  marginTop: '1rem'
+                }}>
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    border: '4px solid var(--border-color, #e0e0e0)',
+                    borderTop: '4px solid var(--brand-primary)',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                </div>
+              )}
+
+              {metadataError && (
+                <div style={{
+                  backgroundColor: 'var(--danger-bg, #f8d7da)',
+                  border: '1px solid var(--danger, #dc3545)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  marginTop: '1rem',
+                  color: 'var(--danger, #dc3545)',
+                  fontSize: '0.875rem'
+                }}>
+                  ⚠️ Metadata detection failed: {metadataError}
+                </div>
+              )}
+
+              <button type="submit" disabled={loading} className="btn btn-primary upload-btn">
+                {loading ? 'Uploading...' : 'Upload Track'}
+              </button>
+            </form>
+          )}
+
+          {/* Bulk Upload UI */}
+          {uploadMode === 'bulk' && !editingTrack && (
+            <div className="bulk-upload-container">
+              {/* Step 1: File Selection */}
+              <div style={{ marginBottom: '2rem' }}>
+                <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Step 1: Select Audio Files</h3>
+                <div style={{
+                  border: '2px dashed var(--border-color, #e0e0e0)',
+                  borderRadius: '8px',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  background: 'var(--bg-secondary, #f9f9f9)'
+                }}>
+                  <input
+                    type="file"
+                    multiple
+                    accept="audio/*"
+                    onChange={handleBulkFilesSelect}
+                    style={{ display: 'none' }}
+                    id="bulk-file-input"
+                  />
+                  <label htmlFor="bulk-file-input" style={{ cursor: 'pointer' }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎵</div>
+                    <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>
+                      Drag & drop multiple audio files here
+                    </p>
+                    <p style={{ margin: '0.5rem 0', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                      or click to browse
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ marginTop: '1rem' }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        document.getElementById('bulk-file-input').click();
+                      }}
+                    >
+                      Browse Files
+                    </button>
+                  </label>
+                  {bulkFiles.length > 0 && (
+                    <p style={{ marginTop: '1rem', color: 'var(--success, #28a745)', fontWeight: '600' }}>
+                      ✓ {bulkFiles.length} file{bulkFiles.length > 1 ? 's' : ''} selected
+                    </p>
                   )}
                 </div>
               </div>
-            )}
 
-            {/* Metadata detection status */}
-            {isDetectingMetadata && (
-              <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                padding: '1.5rem',
-                marginTop: '1rem'
-              }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  border: '4px solid var(--border-color, #e0e0e0)',
-                  borderTop: '4px solid var(--brand-primary)',
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite'
-                }} />
-              </div>
-            )}
+              {/* Step 2: Shared Metadata */}
+              {bulkQueue.length > 0 && (
+                <>
+                  <div style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>
+                      Step 2: Album Metadata (applies to all tracks)
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div className="form-group">
+                        <label>Album Name *</label>
+                        <input
+                          type="text"
+                          name="album"
+                          value={bulkSharedMetadata.album}
+                          onChange={handleBulkSharedMetadataChange}
+                          placeholder="Enter album name"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Primary Artist *</label>
+                        <input
+                          type="text"
+                          name="artist"
+                          value={bulkSharedMetadata.artist}
+                          onChange={handleBulkSharedMetadataChange}
+                          placeholder="Enter artist name"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Year</label>
+                        <input
+                          type="number"
+                          name="year"
+                          value={bulkSharedMetadata.year}
+                          onChange={handleBulkSharedMetadataChange}
+                          placeholder="2024"
+                          min="1900"
+                          max={new Date().getFullYear() + 1}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Genre</label>
+                        <select
+                          name="genre"
+                          value={bulkSharedMetadata.genre}
+                          onChange={handleBulkSharedMetadataChange}
+                        >
+                          <option value="">Select genre</option>
+                          <option value="Pop">Pop</option>
+                          <option value="Rock">Rock</option>
+                          <option value="Jazz">Jazz</option>
+                          <option value="Electronic">Electronic</option>
+                          <option value="Hip-Hop">Hip-Hop</option>
+                          <option value="Classical">Classical</option>
+                          <option value="Country">Country</option>
+                          <option value="R&B">R&B</option>
+                          <option value="Reggae">Reggae</option>
+                          <option value="Blues">Blues</option>
+                          <option value="Folk">Folk</option>
+                          <option value="Indie">Indie</option>
+                          <option value="Alternative">Alternative</option>
+                          <option value="Ambient">Ambient</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                        <label>Album Artwork</label>
+                        <input
+                          type="file"
+                          name="artwork"
+                          onChange={handleBulkSharedMetadataChange}
+                          accept="image/*"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-            {metadataError && (
-              <div style={{
-                backgroundColor: 'var(--danger-bg, #f8d7da)',
-                border: '1px solid var(--danger, #dc3545)',
-                borderRadius: '8px',
-                padding: '0.75rem',
-                marginTop: '1rem',
-                color: 'var(--danger, #dc3545)',
-                fontSize: '0.875rem'
-              }}>
-                ⚠️ Metadata detection failed: {metadataError}
-              </div>
-            )}
+                  {/* Step 3: Track Queue */}
+                  <div style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>
+                      Step 3: Review & Edit Tracks ({bulkQueue.length})
+                    </h3>
+                    <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                      {bulkQueue.map((track, index) => (
+                        <div
+                          key={track.id}
+                          style={{
+                            border: '1px solid var(--border-color, #e0e0e0)',
+                            borderRadius: '8px',
+                            padding: '1rem',
+                            marginBottom: '0.75rem',
+                            background: 'var(--bg-primary, #fff)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: '1rem', alignItems: 'start' }}>
+                            <div style={{
+                              minWidth: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              background: 'var(--brand-primary)',
+                              color: 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: '600'
+                            }}>
+                              {track.track_number}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Track Title *</label>
+                                  <input
+                                    type="text"
+                                    value={track.title}
+                                    onChange={(e) => handleBulkQueueItemChange(track.id, 'title', e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '0.5rem',
+                                      border: '1px solid var(--border-color)',
+                                      borderRadius: '4px'
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Track #</label>
+                                  <input
+                                    type="number"
+                                    value={track.track_number}
+                                    onChange={(e) => handleBulkQueueItemChange(track.id, 'track_number', parseInt(e.target.value))}
+                                    min="1"
+                                    style={{
+                                      width: '100%',
+                                      padding: '0.5rem',
+                                      border: '1px solid var(--border-color)',
+                                      borderRadius: '4px'
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                <span>✓ {formatDuration(track.duration_seconds * 1000)}</span>
+                                {track.bpm && <span>✓ {track.bpm} BPM</span>}
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={track.has_explicit_language}
+                                    onChange={(e) => handleBulkQueueItemChange(track.id, 'has_explicit_language', e.target.checked)}
+                                  />
+                                  Explicit
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={track.has_adult_themes}
+                                    onChange={(e) => handleBulkQueueItemChange(track.id, 'has_adult_themes', e.target.checked)}
+                                  />
+                                  Adult
+                                </label>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFromQueue(track.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--danger, #dc3545)',
+                                cursor: 'pointer',
+                                fontSize: '1.25rem',
+                                padding: '0.25rem'
+                              }}
+                              title="Remove from queue"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-            <button type="submit" disabled={loading} className="btn btn-primary upload-btn">
-              {loading ? 'Uploading...' : 'Upload Track'}
-            </button>
-          </form>
+                  {/* Upload Button */}
+                  <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkQueue([]);
+                        setBulkFiles([]);
+                      }}
+                      className="btn btn-secondary"
+                      disabled={bulkUploading}
+                    >
+                      Clear All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBulkUpload}
+                      className="btn btn-primary"
+                      disabled={bulkUploading || bulkQueue.length === 0}
+                      style={{ minWidth: '200px' }}
+                    >
+                      {bulkUploading
+                        ? `Uploading ${bulkProgress.current} of ${bulkProgress.total}...`
+                        : `Upload All Tracks (${bulkQueue.length})`
+                      }
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="tracks-section card">
@@ -1047,6 +1773,31 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
                   <p className="text-secondary"><strong>Genre:</strong> {track.genre || 'Unknown'}</p>
                   <p className="text-secondary"><strong>Duration:</strong> {Math.floor(track.duration / 1000)}s</p>
                   <p className="text-muted"><strong>Uploaded:</strong> {new Date(track.created_at).toLocaleDateString()}</p>
+
+                  <div className="track-actions">
+                    <button
+                      onClick={() => handleEditTrack(track)}
+                      className="btn-edit"
+                      title="Edit track"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTrack(track.id)}
+                      className={deleteConfirm === track.id ? 'btn-delete confirm' : 'btn-delete'}
+                      title={deleteConfirm === track.id ? 'Click again to confirm' : 'Delete track'}
+                    >
+                      {deleteConfirm === track.id ? 'Confirm Delete?' : 'Delete'}
+                    </button>
+                    {deleteConfirm === track.id && (
+                      <button
+                        onClick={() => setDeleteConfirm(null)}
+                        className="btn-cancel"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {track.artwork_path ? (
                   <div>

@@ -322,3 +322,117 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+
+/* Track action buttons */
+.track-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.btn-edit,
+.btn-delete,
+.btn-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-edit {
+  background: var(--brand-primary, #A14189);
+  color: white;
+}
+
+.btn-edit:hover {
+  background: #8a3674;
+  transform: translateY(-1px);
+}
+
+.btn-delete {
+  background: var(--danger, #dc3545);
+  color: white;
+}
+
+.btn-delete:hover {
+  background: #c82333;
+  transform: translateY(-1px);
+}
+
+.btn-delete.confirm {
+  background: #ff0000;
+  animation: pulse 0.5s ease-in-out infinite;
+}
+
+.btn-cancel {
+  background: var(--bg-tertiary, #e9ecef);
+  color: var(--text-primary, #000);
+}
+
+.btn-cancel:hover {
+  background: var(--bg-secondary, #dee2e6);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+[data-theme="dark"] .btn-cancel {
+  background: #404040;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .btn-cancel:hover {
+  background: #505050;
+}
+
+/* Bulk Upload Styles */
+.bulk-upload-container {
+  padding: 1rem 0;
+}
+
+.bulk-upload-container h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bulk-upload-container input[type="file"] {
+  cursor: pointer;
+}
+
+.bulk-upload-container .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.bulk-upload-container .form-group input,
+.bulk-upload-container .form-group select {
+  width: 100%;
+  padding: 0.625rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 0.9375rem;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+}
+
+.bulk-upload-container .form-group input:focus,
+.bulk-upload-container .form-group select:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
