@@ -131,7 +131,7 @@ const EarningsPage = ({ artistName, isAdmin }) => {
         <h3>How Earnings Work</h3>
         <p>
           {isAdmin 
-            ? 'Revenue is generated at K0.01 per qualified stream (30+ seconds). Artists receive 70% of revenue, while 30% is retained as platform fees.'
+            ? 'Revenue is generated at K0.001 per qualified stream (30+ seconds). Artists receive 70% of revenue, while 30% is retained as platform fees.'
             : 'You earn based on qualified streams (30+ seconds). Earnings are calculated per stream and accumulated over time.'
           }
         </p>

@@ -11,6 +11,24 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
+// Helper function to get ad track IDs and titles for filtering
+const getAdTrackIdentifiers = async () => {
+  const { data: adTracks } = await supabase
+    .from('mvp_content')
+    .select('id, title')
+    .eq('is_ad', true);
+
+  return {
+    adTrackIds: new Set(adTracks?.map(t => t.id) || []),
+    adTrackTitles: new Set(adTracks?.map(t => t.title) || [])
+  };
+};
+
+// Helper function to check if an event is for an ad
+const isAdEvent = (event, adTrackIds, adTrackTitles) => {
+  return adTrackIds.has(event.track_id) || adTrackTitles.has(event.track_title);
+};
+
 export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey = 0) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -50,10 +68,14 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
           return;
         }
 
-        const uniqueListeners = new Set(events.map(e => e.access_code_id).filter(Boolean)).size;
-        const uniqueTracks = new Set(events.map(e => e.track_id).filter(Boolean)).size;
-        const totalStreams = events.length;
-        const estimatedRevenue = totalStreams * 0.01;
+        // Filter out ad events
+        const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
+        const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
+
+        const uniqueListeners = new Set(nonAdEvents.map(e => e.access_code_id).filter(Boolean)).size;
+        const uniqueTracks = new Set(nonAdEvents.map(e => e.track_id).filter(Boolean)).size;
+        const totalStreams = nonAdEvents.length;
+        const estimatedRevenue = totalStreams * 0.001;
 
         setData({
           totalStreams,
@@ -111,8 +133,22 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
           return;
         }
 
+        // Get list of ad track IDs to exclude
+        const { data: adTracks } = await supabase
+          .from('mvp_content')
+          .select('id, title')
+          .eq('is_ad', true);
+
+        const adTrackIds = new Set(adTracks?.map(t => t.id) || []);
+        const adTrackTitles = new Set(adTracks?.map(t => t.title) || []);
+
         const trackStats = {};
         events.forEach(event => {
+          // Skip if this is an ad
+          if (adTrackIds.has(event.track_id) || adTrackTitles.has(event.track_title)) {
+            return;
+          }
+
           const key = event.track_id || event.track_title;
           if (!trackStats[key]) {
             trackStats[key] = {
@@ -190,8 +226,12 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
           return;
         }
 
+        // Filter out ad events
+        const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
+        const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
+
         const dailyStats = {};
-        events.forEach(event => {
+        nonAdEvents.forEach(event => {
           const date = new Date(event.timestamp).toISOString().split('T')[0];
           if (!dailyStats[date]) {
             dailyStats[date] = {
@@ -261,7 +301,11 @@ export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
           return;
         }
 
-        const uniqueAccessCodes = [...new Set(events.map(e => e.access_code_id))];
+        // Filter out ad events
+        const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
+        const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
+
+        const uniqueAccessCodes = [...new Set(nonAdEvents.map(e => e.access_code_id))];
 
         const { data: profiles, error: profilesError } = await supabase
           .from('user_profiles')
@@ -356,8 +400,12 @@ export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
           return;
         }
 
+        // Filter out ad events
+        const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
+        const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
+
         const accessCodeCounts = {};
-        events.forEach(event => {
+        nonAdEvents.forEach(event => {
           accessCodeCounts[event.access_code_id] = (accessCodeCounts[event.access_code_id] || 0) + 1;
         });
 
@@ -455,13 +503,17 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
           return;
         }
 
-        const totalStreams = events.length;
-        const totalRevenue = totalStreams * 0.01;
+        // Filter out ad events
+        const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
+        const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
+
+        const totalStreams = nonAdEvents.length;
+        const totalRevenue = totalStreams * 0.001;
         const artistShare = totalRevenue * 0.70;
         const platformFee = totalRevenue * 0.30;
 
         const trackRevenue = {};
-        events.forEach(event => {
+        nonAdEvents.forEach(event => {
           const key = event.track_id || event.track_title;
           if (!trackRevenue[key]) {
             trackRevenue[key] = {
@@ -471,7 +523,7 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
             };
           }
           trackRevenue[key].streams++;
-          trackRevenue[key].revenue += 0.01;
+          trackRevenue[key].revenue += 0.001;
         });
 
         const byTrack = Object.values(trackRevenue)
@@ -515,7 +567,8 @@ export const usePlatformStats = () => {
 
         const { data: tracks, error: tracksError } = await supabase
           .from('mvp_content')
-          .select('artist');
+          .select('artist')
+          .neq('is_ad', true); // Exclude ads from track count
 
         if (tracksError) throw tracksError;
 
@@ -527,10 +580,14 @@ export const usePlatformStats = () => {
 
         if (eventsError) throw eventsError;
 
+        // Filter out ad events
+        const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
+        const nonAdEvents = events?.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles)) || [];
+
         const uniqueArtists = new Set(tracks?.map(t => t.artist) || []).size;
         const totalTracks = tracks?.length || 0;
-        const totalStreams = events?.length || 0;
-        const totalRevenue = (totalStreams * 0.01).toFixed(2);
+        const totalStreams = nonAdEvents.length;
+        const totalRevenue = (totalStreams * 0.001).toFixed(2);
 
         setData({
           totalArtists: uniqueArtists,
@@ -568,6 +625,7 @@ export const useArtistUploadStats = (artistName) => {
           .from('mvp_content')
           .select('created_at')
           .eq('artist', artistName)
+          .neq('is_ad', true) // Exclude ads
           .order('created_at', { ascending: false });
 
         if (tracksError) throw tracksError;
