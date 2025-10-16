@@ -7,7 +7,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import AudiencePage from './pages/AudiencePage';
 import GeographicPage from './pages/GeographicPage';
 import EarningsPage from './pages/EarningsPage';
-import App from './App';
+import App from './App.jsx';
 import { useAuth } from './hooks/useAuth';
 
 const AppRouter = () => {
