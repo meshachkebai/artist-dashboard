@@ -15,6 +15,7 @@ import {
 } from './utils/validation'
 import ProtectedDashboard from './components/ProtectedDashboard'
 import { useAuth } from './hooks/useAuth'
+import { uploadToR2 } from './services/r2Upload'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -342,88 +343,28 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     try {
       setLoading(true);
 
-      console.log('Uploading track:', {
+      console.log('Uploading track to R2:', {
         title: uploadForm.title,
         artist: uploadForm.artist,
         genre: uploadForm.genre,
         fileName: uploadForm.file.name
       });
 
-      // Create artist-specific folder structure
-      const artistFolder = uploadForm.artist.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      // Upload to R2 via Cloudflare Worker
+      const { audioUrl, artworkUrl } = await uploadToR2({
+        audioFile: uploadForm.file,
+        artworkFile: uploadForm.artwork,
+        artistName: uploadForm.artist,
+        releaseTitle: uploadForm.album || `${uploadForm.title} - Single`,
+        trackTitle: uploadForm.title,
+        trackNumber: uploadForm.track_number
+      });
 
-      // Upload audio file to artist folder
-      const audioFileName = `content/mvp/${artistFolder}/${Date.now()}-${uploadForm.file.name}`;
-      console.log('Attempting upload to:', audioFileName);
+      console.log('✅ R2 upload successful:', { audioUrl, artworkUrl });
 
-      const { data: audioData, error: audioError } = await supabase.storage
-        .from('stream')
-        .upload(audioFileName, uploadForm.file, {
-          contentType: uploadForm.file.type,
-          upsert: true, // Changed to true to allow overwrites
-          cacheControl: '3600'
-        });
-
-      if (audioError) {
-        console.error('❌ Audio upload error:', audioError);
-        console.error('Error details:', {
-          message: audioError.message,
-          statusCode: audioError.statusCode,
-          error: audioError.error
-        });
-
-        // Try alternative bucket name if 'stream' doesn't work
-        if (audioError.message.includes('bucket') || audioError.message.includes('not found')) {
-          console.log('Trying alternative bucket name...');
-          const altResult = await supabase.storage
-            .from('storage')
-            .upload(audioFileName, uploadForm.file, {
-              contentType: uploadForm.file.type,
-              upsert: true
-            });
-
-          if (altResult.error) {
-            console.error('❌ Alternative bucket also failed:', altResult.error);
-            alert(`Upload failed: ${audioError.message}`);
-            return;
-          } else {
-            console.log('✅ Upload succeeded with alternative bucket');
-          }
-        } else {
-          alert(`Upload failed: ${audioError.message}`);
-          return;
-        }
-      } else {
-        console.log('✅ Audio upload successful');
-      }
-
-      // Upload artwork if provided to art folder (no artist subfolder)
-      let artworkPath = null;
-      if (uploadForm.artwork) {
-        const artworkFileName = `content/mvp/art/${Date.now()}-${uploadForm.artwork.name}`;
-        console.log('Uploading artwork to:', artworkFileName);
-
-        const { data: artworkData, error: artworkError } = await supabase.storage
-          .from('stream')
-          .upload(artworkFileName, uploadForm.artwork, {
-            contentType: uploadForm.artwork.type,
-            upsert: false,
-          });
-
-        if (artworkError) {
-          console.error('❌ Artwork upload error:', artworkError);
-          // Don't fail the whole request if artwork upload fails
-        } else {
-          artworkPath = artworkFileName;
-          console.log('✅ Artwork uploaded successfully to:', artworkPath);
-        }
-      } else {
-        console.log('No artwork file provided');
-      }
-
-      // Construct full URLs for storage
-      const audioFileUrl = `${SUPABASE_URL}/storage/v1/object/public/stream/${audioFileName}`;
-      const artworkFileUrl = artworkPath ? `${SUPABASE_URL}/storage/v1/object/public/stream/${artworkPath}` : null;
+      // Use the R2 URLs
+      const audioFileUrl = audioUrl;
+      const artworkFileUrl = artworkUrl;
 
       // Determine final genre value
       const finalGenre = uploadForm.genre === 'Other'
@@ -780,33 +721,19 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       setBulkProgress({ current: i + 1, total: bulkQueue.length });
 
       try {
-        // Upload audio file
-        const audioFileName = `${Date.now()}-${track.file.name}`;
-        const { data: audioData, error: audioError } = await supabase.storage
-          .from('audio-files')
-          .upload(audioFileName, track.file);
+        // Upload to R2 via Cloudflare Worker
+        // Only upload artwork on first track to avoid duplicates
+        const { audioUrl, artworkUrl } = await uploadToR2({
+          audioFile: track.file,
+          artworkFile: (i === 0 && bulkSharedMetadata.artwork) ? bulkSharedMetadata.artwork : null,
+          artistName: bulkSharedMetadata.artist,
+          releaseTitle: bulkSharedMetadata.album,
+          trackTitle: track.title,
+          trackNumber: track.track_number
+        });
 
-        if (audioError) throw audioError;
-
-        const { data: { publicUrl: audioFileUrl } } = supabase.storage
-          .from('audio-files')
-          .getPublicUrl(audioFileName);
-
-        // Upload shared artwork if provided
-        let artworkFileUrl = null;
-        if (bulkSharedMetadata.artwork && i === 0) {
-          const artworkFileName = `${Date.now()}-${bulkSharedMetadata.artwork.name}`;
-          const { data: artworkData, error: artworkError } = await supabase.storage
-            .from('artwork-images')
-            .upload(artworkFileName, bulkSharedMetadata.artwork);
-
-          if (!artworkError) {
-            const { data: { publicUrl } } = supabase.storage
-              .from('artwork-images')
-              .getPublicUrl(artworkFileName);
-            artworkFileUrl = publicUrl;
-          }
-        }
+        const audioFileUrl = audioUrl;
+        const artworkFileUrl = artworkUrl;
 
         // Prepare artist credits
         const artistCredits = {

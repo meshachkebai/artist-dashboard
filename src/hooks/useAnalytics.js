@@ -73,9 +73,15 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
         const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
 
         const uniqueListeners = new Set(nonAdEvents.map(e => e.access_code_id).filter(Boolean)).size;
-        const uniqueTracks = new Set(nonAdEvents.map(e => e.track_id).filter(Boolean)).size;
+        const trackIds = nonAdEvents.map(e => e.track_id).filter(Boolean);
+        const uniqueTracks = new Set(trackIds).size;
         const totalStreams = nonAdEvents.length;
         const estimatedRevenue = totalStreams * 0.001;
+
+        console.log('📊 OVERVIEW STATS - Active Tracks (from analytics events):');
+        console.log('  Total events (non-ad):', nonAdEvents.length);
+        console.log('  Unique track IDs:', uniqueTracks);
+        console.log('  Track IDs:', Array.from(new Set(trackIds)));
 
         setData({
           totalStreams,
@@ -588,6 +594,10 @@ export const usePlatformStats = () => {
         const totalTracks = tracks?.length || 0;
         const totalStreams = nonAdEvents.length;
         const totalRevenue = (totalStreams * 0.001).toFixed(2);
+
+        console.log('🌐 PLATFORM STATS - Total Tracks (from mvp_content table):');
+        console.log('  Total tracks in database (non-ad):', totalTracks);
+        console.log('  Tracks:', tracks?.map(t => ({ artist: t.artist })));
 
         setData({
           totalArtists: uniqueArtists,
