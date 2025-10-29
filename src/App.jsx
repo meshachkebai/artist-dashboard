@@ -16,6 +16,8 @@ import {
 import ProtectedDashboard from './components/ProtectedDashboard'
 import { useAuth } from './hooks/useAuth'
 import { uploadToR2 } from './services/r2Upload'
+import { ContributorList } from './components/shared/ContributorList'
+import './components/shared/ContributorBadge.css'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -55,7 +57,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     hasContributing: false,
     headliners: [''],
     featuring: [''],
-    contributing: [''],
+    contributing: [{ role: 'producer', name: '', customRole: '' }],
     has_explicit_language: false,
     has_adult_themes: false
   });
@@ -122,30 +124,172 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     try {
       setLoading(true);
 
-      // Admin sees all tracks, artists see only their own
-      let query = supabase
-        .from('mvp_content')
-        .select('*')
-        .neq('is_ad', true) // Exclude ads
-        .order('created_at', { ascending: false })
-        .limit(50);
+      let data, error;
 
       if (!isAdmin && artistName) {
-        query = query.eq('artist', artistName);
-      }
+        // For artists: get tracks they contributed to
+        const { data: artistData, error: artistError } = await supabase
+          .from('artists')
+          .select('id')
+          .eq('name', artistName)
+          .single();
 
-      const { data, error } = await query;
+        if (artistError || !artistData) {
+          console.error('Artist not found:', artistError);
+          setTracks([]);
+          return;
+        }
+
+        // Get track IDs where this artist contributed
+        const { data: contributions, error: contribError } = await supabase
+          .from('track_contributors')
+          .select('track_id')
+          .eq('artist_id', artistData.id);
+
+        if (contribError) {
+          console.error('Failed to load contributions:', contribError);
+          return;
+        }
+
+        const trackIds = contributions.map(c => c.track_id);
+
+        if (trackIds.length === 0) {
+          setTracks([]);
+          return;
+        }
+
+        // Get full track details
+        const result = await supabase
+          .from('mvp_content')
+          .select('*')
+          .in('id', trackIds)
+          .neq('is_ad', true)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        data = result.data;
+        error = result.error;
+      } else {
+        // Admin sees all tracks
+        const result = await supabase
+          .from('mvp_content')
+          .select('*')
+          .neq('is_ad', true)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) {
         console.error('Failed to load tracks:', error);
         return;
       }
 
-      // All tracks now store full URLs, no transformation needed
-      const transformedTracks = data.map(track => ({
-        ...track,
-        duration: track.duration_seconds * 1000 // Convert to milliseconds for consistency
-      }));
+      // Get contributors for all tracks
+      const trackIds = data.map(t => t.id);
+      const { data: contributors } = await supabase
+        .from('track_contributors')
+        .select(`
+          track_id,
+          role,
+          artists (
+            id,
+            name,
+            has_account
+          )
+        `)
+        .in('track_id', trackIds)
+        .order('role');
+
+      // Get analytics for all tracks
+      const { data: allEvents, error: eventsError } = await supabase
+        .from('analytics_events')
+        .select('track_id, event_type, duration_seconds, access_code_id')
+        .in('track_id', trackIds);
+
+      if (eventsError) {
+        console.error('Failed to load analytics:', eventsError);
+      }
+
+      // Get user profiles for location data
+      const accessCodeIds = [...new Set((allEvents || []).map(e => e.access_code_id).filter(Boolean))];
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('access_code_id, city')
+        .in('access_code_id', accessCodeIds);
+
+      // Create lookup map for cities
+      const cityByAccessCode = (profiles || []).reduce((acc, p) => {
+        acc[p.access_code_id] = p.city;
+        return acc;
+      }, {});
+
+      // Calculate stats and hotspots per track
+      const statsByTrack = (allEvents || []).reduce((acc, event) => {
+        if (!acc[event.track_id]) {
+          acc[event.track_id] = {
+            totalPlays: 0,
+            qualifiedStreams: 0,
+            cityCounts: {}
+          };
+        }
+
+        if (event.event_type === 'play_start') {
+          acc[event.track_id].totalPlays++;
+        }
+
+        if (event.event_type === 'play_end' && event.duration_seconds >= 30) {
+          acc[event.track_id].qualifiedStreams++;
+
+          // Track city for qualified streams
+          const city = cityByAccessCode[event.access_code_id];
+          if (city) {
+            acc[event.track_id].cityCounts[city] = (acc[event.track_id].cityCounts[city] || 0) + 1;
+          }
+        }
+
+        return acc;
+      }, {});
+
+      // Group contributors by track
+      const contributorsByTrack = (contributors || []).reduce((acc, c) => {
+        if (!acc[c.track_id]) acc[c.track_id] = [];
+        acc[c.track_id].push(c);
+        return acc;
+      }, {});
+
+      // Add contributors, stats, and convert duration
+      const transformedTracks = data.map(track => {
+        const stats = statsByTrack[track.id] || { totalPlays: 0, qualifiedStreams: 0, cityCounts: {} };
+        const completionRate = stats.totalPlays > 0
+          ? Math.round((stats.qualifiedStreams / stats.totalPlays) * 100)
+          : 0;
+
+        // Get top 3 cities sorted by stream count
+        const topCities = Object.entries(stats.cityCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([city, count]) => ({ city, streams: count }));
+
+        const hotspotCity = topCities[0]?.city || null;
+        const hotspotStreams = topCities[0]?.streams || 0;
+
+        return {
+          ...track,
+          duration: track.duration_seconds * 1000,
+          contributors: contributorsByTrack[track.id] || [],
+          analytics: {
+            totalPlays: stats.totalPlays,
+            qualifiedStreams: stats.qualifiedStreams,
+            completionRate,
+            hotspotCity,
+            hotspotStreams,
+            topCities
+          }
+        };
+      });
 
       setTracks(transformedTracks);
     } catch (error) {
@@ -167,7 +311,9 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
   const addArtistField = (type) => {
     setUploadForm(prev => ({
       ...prev,
-      [type]: [...prev[type], '']
+      [type]: type === 'contributing'
+        ? [...prev[type], { role: 'producer', name: '', customRole: '' }]
+        : [...prev[type], '']
     }));
   };
 
@@ -182,6 +328,15 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     setUploadForm(prev => ({
       ...prev,
       [type]: prev[type].map((artist, i) => i === index ? value : artist)
+    }));
+  };
+
+  const updateContributorField = (index, field, value) => {
+    setUploadForm(prev => ({
+      ...prev,
+      contributing: prev.contributing.map((contributor, i) =>
+        i === index ? { ...contributor, [field]: value } : contributor
+      )
     }));
   };
 
@@ -379,8 +534,10 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         uploadForm.headliners.some(h => h.trim() !== '');
       const hasFeaturing = uploadForm.hasFeaturing &&
         uploadForm.featuring.some(f => f.trim() !== '');
+      const hasContributing = uploadForm.hasContributing &&
+        uploadForm.contributing.some(c => c.name.trim() !== '');
 
-      if (hasAdditionalHeadliners || hasFeaturing) {
+      if (hasAdditionalHeadliners || hasFeaturing || hasContributing) {
         artistCredits = {};
 
         // Add headliners (additional artists beyond primary)
@@ -400,6 +557,17 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             .map(name => ({
               name: name.trim(),
               id: name.toLowerCase().replace(/[^a-z0-9]/g, '-')
+            }));
+        }
+
+        // Add contributing artists with roles
+        if (hasContributing) {
+          artistCredits.contributing = uploadForm.contributing
+            .filter(c => c.name.trim() !== '')
+            .map(c => ({
+              name: c.name.trim(),
+              role: c.role === 'other' ? c.customRole.trim() : c.role,
+              id: c.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
             }));
         }
       }
@@ -502,7 +670,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         hasContributing: false,
         headliners: [''],
         featuring: [''],
-        contributing: [''],
+        contributing: [{ role: 'producer', name: '' }],
         has_explicit_language: false,
         has_adult_themes: false
       });
@@ -593,7 +761,13 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       hasContributing: hasContributing,
       headliners: hasHeadliners ? credits.headliners.map(h => h.name) : [''],
       featuring: hasFeaturing ? credits.featuring.map(f => f.name) : [''],
-      contributing: hasContributing ? credits.contributing.map(c => c.name) : [''],
+      contributing: hasContributing
+        ? credits.contributing.map(c => ({
+          role: ['producer', 'songwriter', 'composer', 'engineer', 'mixer', 'mastering', 'editor', 'arranger', 'lyricist', 'performer'].includes(c.role) ? c.role : 'other',
+          name: c.name,
+          customRole: ['producer', 'songwriter', 'composer', 'engineer', 'mixer', 'mastering', 'editor', 'arranger', 'lyricist', 'performer'].includes(c.role) ? '' : c.role
+        }))
+        : [{ role: 'producer', name: '', customRole: '' }],
       has_explicit_language: track.has_explicit_language || false,
       has_adult_themes: track.has_adult_themes || false,
     });
@@ -620,7 +794,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       hasContributing: false,
       headliners: [''],
       featuring: [''],
-      contributing: [''],
+      contributing: [{ role: 'producer', name: '', customRole: '' }],
       has_explicit_language: false,
       has_adult_themes: false
     });
@@ -1109,38 +1283,93 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                       </button>
                     </div>
 
-                    {/* Dynamic input fields */}
-                    {uploadForm.contributing.map((artist, index) => (
-                      <div key={index} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-                        <input
-                          value={artist}
-                          onChange={(e) => updateArtistField('contributing', index, e.target.value)}
-                          placeholder={`Contributing Artist ${index + 1}`}
-                          style={{ flex: 1 }}
-                        />
+                    {/* Dynamic input fields with role selection - stacked layout */}
+                    {uploadForm.contributing.map((contributor, index) => (
+                      <div key={index} style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        border: '1px solid var(--border-color, #e0e0e0)',
+                        borderRadius: '8px',
+                        background: 'var(--bg-secondary, #f9f9f9)',
+                        position: 'relative'
+                      }}>
+                        {/* Remove button in top right */}
                         {uploadForm.contributing.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeArtistField('contributing', index)}
                             style={{
+                              position: 'absolute',
+                              top: '0.5rem',
+                              right: '0.5rem',
                               background: 'var(--danger, #dc3545)',
                               color: 'white',
                               border: 'none',
                               borderRadius: '4px',
-                              padding: '0.5rem',
+                              padding: '0.25rem 0.5rem',
                               cursor: 'pointer',
-                              fontSize: '1rem',
-                              width: '32px',
-                              height: '32px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
+                              fontSize: '0.875rem',
+                              fontWeight: '600'
                             }}
-                            title="Remove this artist"
+                            title="Remove this contributor"
                           >
-                            ×
+                            Remove
                           </button>
                         )}
+
+                        {/* 1A. Role dropdown - full width */}
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: '500' }}>
+                            Role
+                          </label>
+                          <select
+                            value={contributor.role}
+                            onChange={(e) => updateContributorField(index, 'role', e.target.value)}
+                            style={{ width: '100%' }}
+                          >
+                            <option value="producer">Producer</option>
+                            <option value="songwriter">Songwriter</option>
+                            <option value="composer">Composer</option>
+                            <option value="engineer">Engineer</option>
+                            <option value="mixer">Mixer</option>
+                            <option value="mastering">Mastering</option>
+                            <option value="editor">Editor</option>
+                            <option value="arranger">Arranger</option>
+                            <option value="lyricist">Lyricist</option>
+                            <option value="performer">Performer</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+
+                        {/* 1B. Custom role input - conditional on "Other" selected */}
+                        {contributor.role === 'other' && (
+                          <div style={{ marginBottom: '0.75rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: '500' }}>
+                              Custom Role
+                            </label>
+                            <input
+                              type="text"
+                              value={contributor.customRole || ''}
+                              onChange={(e) => updateContributorField(index, 'customRole', e.target.value)}
+                              placeholder="e.g., Vocal Coach, Session Musician"
+                              style={{ width: '100%' }}
+                            />
+                          </div>
+                        )}
+
+                        {/* 1C. Contributor name - full width */}
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: '500' }}>
+                            Name
+                          </label>
+                          <input
+                            type="text"
+                            value={contributor.name}
+                            onChange={(e) => updateContributorField(index, 'name', e.target.value)}
+                            placeholder="Contributor name"
+                            style={{ width: '100%' }}
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1697,10 +1926,48 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                   <h3 style={{ color: 'var(--brand-accent)', margin: '0 0 0.5rem 0' }}>
                     {track.title}
                   </h3>
-                  <p className="text-secondary"><strong>Artist:</strong> {track.artist}</p>
-                  <p className="text-secondary"><strong>Genre:</strong> {track.genre || 'Unknown'}</p>
-                  <p className="text-secondary"><strong>Duration:</strong> {Math.floor(track.duration / 1000)}s</p>
-                  <p className="text-muted"><strong>Uploaded:</strong> {new Date(track.created_at).toLocaleDateString()}</p>
+                  <ContributorList contributors={track.contributors} />
+                  <p className="text-secondary">
+                    <strong>Genre:</strong> {track.genre || 'Unknown'} | <strong>Duration:</strong> {Math.floor(track.duration / 1000)}s | <strong>Uploaded:</strong> {new Date(track.created_at).toLocaleDateString()}
+                  </p>
+
+                  {track.analytics && (
+                    <div className="track-analytics" style={{
+                      color: 'var(--text-secondary, #666)',
+                      fontSize: '0.875rem',
+                      marginTop: '0.5rem',
+                      marginBottom: '0.75rem'
+                    }}>
+                      <p style={{ margin: '0 0 0.25rem 0' }}>
+                        {track.analytics.totalPlays.toLocaleString()} plays • {track.analytics.qualifiedStreams.toLocaleString()} streams ({track.analytics.completionRate}%)
+                      </p>
+                      {track.analytics.hotspotCity && (
+                        <p
+                          style={{
+                            margin: 0,
+                            fontWeight: '500',
+                            color: 'var(--brand-primary, #A14189)',
+                            cursor: track.analytics.topCities.length > 1 ? 'pointer' : 'default'
+                          }}
+                          title={track.analytics.topCities.length > 1
+                            ? track.analytics.topCities.map(c => `${c.city}: ${c.streams} streams`).join('\n')
+                            : ''
+                          }
+                        >
+                          Blowing up in: {track.analytics.hotspotCity} ({track.analytics.hotspotStreams.toLocaleString()} streams)
+                          {track.analytics.topCities.length > 1 && (
+                            <span style={{
+                              marginLeft: '0.25rem',
+                              fontSize: '0.75rem',
+                              opacity: 0.7
+                            }}>
+                              +{track.analytics.topCities.length - 1} more
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="track-actions">
                     <button

@@ -571,10 +571,19 @@ export const usePlatformStats = () => {
         setLoading(true);
         setError(null);
 
+        // Count artists from artists table
+        const { data: artists, error: artistsError } = await supabase
+          .from('artists')
+          .select('id')
+          .eq('category', 'music');
+
+        if (artistsError) throw artistsError;
+
+        // Count tracks from mvp_content
         const { data: tracks, error: tracksError } = await supabase
           .from('mvp_content')
-          .select('artist')
-          .neq('is_ad', true); // Exclude ads from track count
+          .select('id')
+          .neq('is_ad', true);
 
         if (tracksError) throw tracksError;
 
@@ -590,17 +599,17 @@ export const usePlatformStats = () => {
         const { adTrackIds, adTrackTitles } = await getAdTrackIdentifiers();
         const nonAdEvents = events?.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles)) || [];
 
-        const uniqueArtists = new Set(tracks?.map(t => t.artist) || []).size;
+        const totalArtists = artists?.length || 0;
         const totalTracks = tracks?.length || 0;
         const totalStreams = nonAdEvents.length;
         const totalRevenue = (totalStreams * 0.001).toFixed(2);
 
-        console.log('🌐 PLATFORM STATS - Total Tracks (from mvp_content table):');
-        console.log('  Total tracks in database (non-ad):', totalTracks);
-        console.log('  Tracks:', tracks?.map(t => ({ artist: t.artist })));
+        console.log('🌐 PLATFORM STATS - Total Artists and Tracks:');
+        console.log('  Total artists:', totalArtists);
+        console.log('  Total tracks (non-ad):', totalTracks);
 
         setData({
-          totalArtists: uniqueArtists,
+          totalArtists,
           totalTracks,
           totalStreams,
           totalRevenue
@@ -631,17 +640,37 @@ export const useArtistUploadStats = (artistName) => {
         setLoading(true);
         setError(null);
 
-        const { data: tracks, error: tracksError } = await supabase
-          .from('mvp_content')
-          .select('created_at')
-          .eq('artist', artistName)
-          .neq('is_ad', true) // Exclude ads
-          .order('created_at', { ascending: false });
+        // Get artist_id first
+        const { data: artistData, error: artistError } = await supabase
+          .from('artists')
+          .select('id')
+          .eq('name', artistName)
+          .single();
 
-        if (tracksError) throw tracksError;
+        if (artistError) throw artistError;
 
-        const totalUploads = tracks?.length || 0;
-        const lastUpload = tracks && tracks.length > 0 ? tracks[0].created_at : null;
+        // Get all contributions
+        const { data: contributions, error: contribError } = await supabase
+          .from('track_contributors')
+          .select(`
+            track_id,
+            mvp_content (
+              created_at,
+              is_ad
+            )
+          `)
+          .eq('artist_id', artistData.id);
+
+        if (contribError) throw contribError;
+
+        // Filter out ads and get track data
+        const tracks = (contributions || [])
+          .filter(c => !c.mvp_content.is_ad)
+          .map(c => c.mvp_content)
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        const totalUploads = tracks.length;
+        const lastUpload = tracks.length > 0 ? tracks[0].created_at : null;
 
         setData({
           totalUploads,
