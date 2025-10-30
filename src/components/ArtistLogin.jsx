@@ -99,7 +99,7 @@ const ArtistLogin = ({ onLogin }) => {
       // Success - reset attempts
       setAttemptCount(0);
       setLockoutUntil(null);
-      onLogin(data.artist_name, data.is_admin || false);
+      onLogin(data.artist_name, data.is_admin || false, data.account_type || 'artist');
     } catch (error) {
       console.error('Login error:', error);
       setError('Login failed. Please try again.');

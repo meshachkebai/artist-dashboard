@@ -16,6 +16,7 @@ export const useAuth = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [artistName, setArtistName] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [accountType, setAccountType] = useState('artist');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,12 +29,12 @@ export const useAuth = () => {
       }
 
       try {
-        const { artist_name, is_admin } = JSON.parse(storedAuth);
+        const { artist_name, is_admin, account_type } = JSON.parse(storedAuth);
 
         // Validate against database
         const { data, error } = await supabase
           .from('artist_access_codes')
-          .select('artist_name, is_admin, is_revoked')
+          .select('artist_name, is_admin, is_revoked, account_type')
           .eq('artist_name', artist_name)
           .eq('is_revoked', false)
           .single();
@@ -45,16 +46,22 @@ export const useAuth = () => {
           setIsAuthenticated(false);
           setArtistName(null);
           setIsAdmin(false);
+          setAccountType('artist');
         } else {
-          // Valid session - verify admin status matches
-          if (data.is_admin !== is_admin) {
-            // Admin status changed, update localStorage
-            const updatedAuth = { artist_name: data.artist_name, is_admin: data.is_admin };
+          // Valid session - verify admin status and account type match
+          if (data.is_admin !== is_admin || data.account_type !== account_type) {
+            // Data changed, update localStorage
+            const updatedAuth = { 
+              artist_name: data.artist_name, 
+              is_admin: data.is_admin,
+              account_type: data.account_type || 'artist'
+            };
             localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedAuth));
           }
           
           setArtistName(data.artist_name);
           setIsAdmin(data.is_admin || false);
+          setAccountType(data.account_type || 'artist');
           setIsAuthenticated(true);
         }
       } catch (error) {
@@ -69,11 +76,12 @@ export const useAuth = () => {
     validateSession();
   }, []);
 
-  const login = (artist_name, is_admin = false) => {
-    const authData = { artist_name, is_admin };
+  const login = (artist_name, is_admin = false, account_type = 'artist') => {
+    const authData = { artist_name, is_admin, account_type };
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
     setArtistName(artist_name);
     setIsAdmin(is_admin);
+    setAccountType(account_type);
     setIsAuthenticated(true);
   };
 
@@ -81,6 +89,7 @@ export const useAuth = () => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setArtistName(null);
     setIsAdmin(false);
+    setAccountType('artist');
     setIsAuthenticated(false);
     // Force page reload to show login screen
     window.location.reload();
@@ -90,6 +99,7 @@ export const useAuth = () => {
     isAuthenticated,
     artistName,
     isAdmin,
+    accountType,
     loading,
     login,
     logout

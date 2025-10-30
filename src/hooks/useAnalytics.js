@@ -43,6 +43,27 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
+        // Get artist_id if filtering by artist
+        let artistId = null;
+        if (!isAdmin && artistName) {
+          const { data: artistData } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', artistName)
+            .single();
+          artistId = artistData?.id;
+        }
+
+        // Get track IDs for this artist
+        let trackIds = null;
+        if (artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+        }
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -50,8 +71,8 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
           .gte('duration_seconds', 30)
           .gte('timestamp', startDate.toISOString());
 
-        if (!isAdmin && artistName) {
-          query = query.eq('artist_name', artistName);
+        if (trackIds && trackIds.length > 0) {
+          query = query.in('track_id', trackIds);
         }
 
         const { data: events, error: queryError } = await query;
@@ -73,15 +94,15 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
         const nonAdEvents = events.filter(e => !isAdEvent(e, adTrackIds, adTrackTitles));
 
         const uniqueListeners = new Set(nonAdEvents.map(e => e.access_code_id).filter(Boolean)).size;
-        const trackIds = nonAdEvents.map(e => e.track_id).filter(Boolean);
-        const uniqueTracks = new Set(trackIds).size;
+        const eventTrackIds = nonAdEvents.map(e => e.track_id).filter(Boolean);
+        const uniqueTracks = new Set(eventTrackIds).size;
         const totalStreams = nonAdEvents.length;
         const estimatedRevenue = totalStreams * 0.001;
 
         console.log('📊 OVERVIEW STATS - Active Tracks (from analytics events):');
         console.log('  Total events (non-ad):', nonAdEvents.length);
         console.log('  Unique track IDs:', uniqueTracks);
-        console.log('  Track IDs:', Array.from(new Set(trackIds)));
+        console.log('  Track IDs:', Array.from(new Set(eventTrackIds)));
 
         setData({
           totalStreams,
@@ -117,6 +138,27 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
+        // Get artist_id if filtering by artist
+        let artistId = null;
+        if (!isAdmin && artistName) {
+          const { data: artistData } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', artistName)
+            .single();
+          artistId = artistData?.id;
+        }
+
+        // Get track IDs for this artist
+        let trackIds = null;
+        if (artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+        }
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -126,8 +168,8 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
           .not('track_title', 'is', null)
           .not('artist_name', 'is', null);
 
-        if (!isAdmin && artistName) {
-          query = query.eq('artist_name', artistName);
+        if (trackIds && trackIds.length > 0) {
+          query = query.in('track_id', trackIds);
         }
 
         const { data: events, error: queryError } = await query;
@@ -212,6 +254,27 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
+        // Get artist_id if filtering by artist
+        let artistId = null;
+        if (!isAdmin && artistName) {
+          const { data: artistData } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', artistName)
+            .single();
+          artistId = artistData?.id;
+        }
+
+        // Get track IDs for this artist
+        let trackIds = null;
+        if (artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+        }
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -219,8 +282,8 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
           .gte('duration_seconds', 30)
           .gte('timestamp', startDate.toISOString());
 
-        if (!isAdmin && artistName) {
-          query = query.eq('artist_name', artistName);
+        if (trackIds && trackIds.length > 0) {
+          query = query.in('track_id', trackIds);
         }
 
         const { data: events, error: queryError } = await query;
@@ -287,15 +350,36 @@ export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
+        // Get artist_id if filtering by artist
+        let artistId = null;
+        if (!isAdmin && artistName) {
+          const { data: artistData } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', artistName)
+            .single();
+          artistId = artistData?.id;
+        }
+
+        // Get track IDs for this artist
+        let trackIds = null;
+        if (artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+        }
+
         let eventsQuery = supabase
           .from('analytics_events')
-          .select('access_code_id, artist_name')
+          .select('access_code_id, track_id')
           .eq('event_type', 'play_end')
           .gte('duration_seconds', 30)
           .gte('timestamp', startDate.toISOString());
 
-        if (!isAdmin && artistName) {
-          eventsQuery = eventsQuery.eq('artist_name', artistName);
+        if (trackIds && trackIds.length > 0) {
+          eventsQuery = eventsQuery.in('track_id', trackIds);
         }
 
         const { data: events, error: eventsError } = await eventsQuery;
@@ -386,15 +470,36 @@ export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
+        // Get artist_id if filtering by artist
+        let artistId = null;
+        if (!isAdmin && artistName) {
+          const { data: artistData } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', artistName)
+            .single();
+          artistId = artistData?.id;
+        }
+
+        // Get track IDs for this artist
+        let trackIds = null;
+        if (artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+        }
+
         let eventsQuery = supabase
           .from('analytics_events')
-          .select('access_code_id, artist_name')
+          .select('access_code_id, track_id')
           .eq('event_type', 'play_end')
           .gte('duration_seconds', 30)
           .gte('timestamp', startDate.toISOString());
 
-        if (!isAdmin && artistName) {
-          eventsQuery = eventsQuery.eq('artist_name', artistName);
+        if (trackIds && trackIds.length > 0) {
+          eventsQuery = eventsQuery.in('track_id', trackIds);
         }
 
         const { data: events, error: eventsError } = await eventsQuery;
@@ -483,6 +588,32 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
+        // Get artist_id if filtering by artist
+        let artistId = null;
+        if (!isAdmin && artistName) {
+          const { data: artistData } = await supabase
+            .from('artists')
+            .select('id')
+            .eq('name', artistName)
+            .single();
+          artistId = artistData?.id;
+        }
+
+        // Get track IDs and splits for this artist
+        let trackIds = null;
+        let splitsByTrack = {};
+        if (artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id, split_percentage')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+          splitsByTrack = contributions?.reduce((acc, c) => {
+            acc[c.track_id] = c.split_percentage;
+            return acc;
+          }, {}) || {};
+        }
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -491,8 +622,8 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
           .gte('timestamp', startDate.toISOString())
           .not('track_title', 'is', null);
 
-        if (!isAdmin && artistName) {
-          query = query.eq('artist_name', artistName);
+        if (trackIds && trackIds.length > 0) {
+          query = query.in('track_id', trackIds);
         }
 
         const { data: events, error: queryError } = await query;
@@ -523,6 +654,7 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
           const key = event.track_id || event.track_title;
           if (!trackRevenue[key]) {
             trackRevenue[key] = {
+              trackId: event.track_id,
               trackTitle: event.track_title,
               streams: 0,
               revenue: 0
@@ -532,12 +664,55 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
           trackRevenue[key].revenue += 0.001;
         });
 
+        // Get all contributors for admin view
+        let contributorsByTrack = {};
+        if (isAdmin) {
+          const allTrackIds = Object.values(trackRevenue).map(t => t.trackId).filter(Boolean);
+          if (allTrackIds.length > 0) {
+            const { data: allContributors } = await supabase
+              .from('track_contributors')
+              .select(`
+                track_id,
+                role,
+                split_percentage,
+                artists (
+                  name
+                )
+              `)
+              .in('track_id', allTrackIds);
+            
+            contributorsByTrack = (allContributors || []).reduce((acc, c) => {
+              if (!acc[c.track_id]) acc[c.track_id] = [];
+              acc[c.track_id].push(c);
+              return acc;
+            }, {});
+          }
+        }
+
         const byTrack = Object.values(trackRevenue)
-          .map(track => ({
-            ...track,
-            revenue: track.revenue.toFixed(2),
-            artistShare: (track.revenue * 0.70).toFixed(2)
-          }))
+          .map(track => {
+            const split = splitsByTrack[track.trackId];
+            const artistShareTotal = track.revenue * 0.70;
+            const mySplit = split ? (artistShareTotal * split) / 100 : artistShareTotal;
+            
+            // Calculate individual earnings for each contributor (admin view)
+            const contributors = contributorsByTrack[track.trackId] || [];
+            const contributorEarnings = contributors.map(c => ({
+              name: c.artists.name,
+              role: c.role,
+              split: c.split_percentage,
+              earnings: c.split_percentage ? ((artistShareTotal * c.split_percentage) / 100).toFixed(2) : null
+            }));
+            
+            return {
+              ...track,
+              revenue: track.revenue.toFixed(2),
+              artistShare: artistShareTotal.toFixed(2),
+              mySplit: split || null,
+              myEarnings: mySplit.toFixed(2),
+              contributors: contributorEarnings
+            };
+          })
           .sort((a, b) => b.streams - a.streams);
 
         setData({

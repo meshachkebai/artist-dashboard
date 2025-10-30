@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useEarnings } from '../hooks/useAnalytics';
+import { useEarningsByRole } from '../hooks/useEarningsByRole';
 import StatCard from '../components/shared/StatCard';
 import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
@@ -8,6 +9,7 @@ import './EarningsPage.css';
 const EarningsPage = ({ artistName, isAdmin }) => {
   const [dateRange, setDateRange] = useState(30);
   const { data: earnings, loading } = useEarnings(artistName, isAdmin, dateRange);
+  const { data: earningsByRole, loading: roleLoading } = useEarningsByRole(!isAdmin ? artistName : null, dateRange);
 
   return (
     <div className="earnings-page">
@@ -80,6 +82,29 @@ const EarningsPage = ({ artistName, isAdmin }) => {
         )}
       </div>
 
+      {!isAdmin && earningsByRole && earningsByRole.byRole && earningsByRole.byRole.length > 0 && (
+        <div className="revenue-breakdown">
+          <h2>Earnings by Role</h2>
+          <div className="revenue-list">
+            {earningsByRole.byRole.map((role, index) => (
+              <div key={index} className="revenue-item">
+                <div className="revenue-rank">{index + 1}</div>
+                <div className="revenue-track">
+                  <div className="track-title" style={{ textTransform: 'capitalize' }}>{role.role}</div>
+                  <div className="track-streams">{role.streams.toLocaleString()} streams • {role.trackCount} track{role.trackCount !== 1 ? 's' : ''}</div>
+                </div>
+                <div className="revenue-amounts">
+                  <div className="revenue-artist">
+                    <span className="amount-label">Earnings</span>
+                    <span className="amount-value">K{role.earnings}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="revenue-breakdown">
         <h2>Revenue by Track</h2>
         {loading ? (
@@ -87,35 +112,85 @@ const EarningsPage = ({ artistName, isAdmin }) => {
         ) : earnings && earnings.byTrack && earnings.byTrack.length > 0 ? (
           <div className="revenue-list">
             {earnings.byTrack.map((track, index) => (
-              <div key={index} className="revenue-item">
-                <div className="revenue-rank">{index + 1}</div>
-                <div className="revenue-track">
-                  <div className="track-title">{track.trackTitle}</div>
-                  <div className="track-streams">{track.streams.toLocaleString()} streams</div>
-                </div>
-                <div className="revenue-amounts">
-                  {isAdmin ? (
-                    <>
-                      <div className="revenue-total">
-                        <span className="amount-label">Total</span>
-                        <span className="amount-value">K{track.revenue}</span>
-                      </div>
-                      <div className="revenue-artist">
-                        <span className="amount-label">Artist</span>
-                        <span className="amount-value">K{track.artistShare}</span>
-                      </div>
-                      <div className="revenue-platform">
-                        <span className="amount-label">Platform</span>
-                        <span className="amount-value">K{(track.revenue * 0.30).toFixed(2)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="revenue-artist">
-                      <span className="amount-label">Earnings</span>
-                      <span className="amount-value">K{track.artistShare}</span>
+              <div key={index}>
+                <div className="revenue-item">
+                  <div className="revenue-rank">{index + 1}</div>
+                  <div className="revenue-track">
+                    <div className="track-title">{track.trackTitle}</div>
+                    <div className="track-streams">
+                      {track.streams.toLocaleString()} streams
+                      {!isAdmin && track.mySplit && (
+                        <span style={{ 
+                          marginLeft: '0.5rem',
+                          color: 'var(--success, #28a745)',
+                          fontWeight: '600',
+                          fontSize: '0.875rem'
+                        }}>
+                          • Your Split: {track.mySplit}%
+                        </span>
+                      )}
                     </div>
-                  )}
+                  </div>
+                  <div className="revenue-amounts">
+                    {isAdmin ? (
+                      <>
+                        <div className="revenue-total">
+                          <span className="amount-label">Total</span>
+                          <span className="amount-value">K{track.revenue}</span>
+                        </div>
+                        <div className="revenue-artist">
+                          <span className="amount-label">Artist</span>
+                          <span className="amount-value">K{track.artistShare}</span>
+                        </div>
+                        <div className="revenue-platform">
+                          <span className="amount-label">Platform</span>
+                          <span className="amount-value">K{(track.revenue * 0.30).toFixed(2)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="revenue-artist">
+                        <span className="amount-label">{track.mySplit ? 'Your Earnings' : 'Earnings'}</span>
+                        <span className="amount-value">K{track.mySplit ? track.myEarnings : track.artistShare}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
+                
+                {/* Admin: Show contributor splits breakdown */}
+                {isAdmin && track.contributors && track.contributors.length > 0 && (
+                  <div style={{
+                    marginLeft: '3rem',
+                    marginTop: '0.5rem',
+                    marginBottom: '1rem',
+                    padding: '1rem',
+                    background: 'var(--bg-secondary, #f9f9f9)',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem'
+                  }}>
+                    <strong style={{ display: 'block', marginBottom: '0.5rem' }}>Split Breakdown:</strong>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {track.contributors.map((contrib, idx) => (
+                        <div key={idx} style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between',
+                          padding: '0.5rem',
+                          background: 'var(--bg-primary, #fff)',
+                          borderRadius: '4px'
+                        }}>
+                          <span style={{ textTransform: 'capitalize' }}>
+                            {contrib.name} ({contrib.role})
+                          </span>
+                          <span style={{ 
+                            fontWeight: '600',
+                            color: contrib.split ? 'var(--success, #28a745)' : 'var(--danger, #dc3545)'
+                          }}>
+                            {contrib.split ? `${contrib.split}% = K${contrib.earnings}` : 'No split set'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
