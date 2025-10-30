@@ -45,22 +45,46 @@ export async function uploadToR2({
   }
 
   // Call Cloudflare Worker
-  const response = await fetch(WORKER_URL, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(WORKER_URL, {
+      method: 'POST',
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Upload failed');
+    if (!response.ok) {
+      let errorMessage = 'Upload failed';
+      try {
+        const error = await response.json();
+        errorMessage = error.error || errorMessage;
+      } catch (e) {
+        // If response isn't JSON, use status text
+        errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
+      }
+      console.error('R2 Upload Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        message: errorMessage
+      });
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    
+    if (!result.audioUrl) {
+      throw new Error('Upload succeeded but no audio URL returned');
+    }
+    
+    return {
+      audioUrl: result.audioUrl,
+      artworkUrl: result.artworkUrl,
+      audioPath: result.audioPath,
+      artworkPath: result.artworkPath
+    };
+  } catch (error) {
+    // Network errors or other fetch failures
+    if (error.message.includes('fetch')) {
+      throw new Error(`Network error: Cannot reach upload server at ${WORKER_URL}`);
+    }
+    throw error;
   }
-
-  const result = await response.json();
-  
-  return {
-    audioUrl: result.audioUrl,
-    artworkUrl: result.artworkUrl,
-    audioPath: result.audioPath,
-    artworkPath: result.artworkPath
-  };
 }

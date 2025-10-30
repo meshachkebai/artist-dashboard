@@ -746,7 +746,12 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
 
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      alert(`Upload failed: ${error.message || 'Please try again.'}`);
     } finally {
       setLoading(false);
     }
