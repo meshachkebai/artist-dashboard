@@ -68,7 +68,7 @@ const EarningsPage = ({ artistName, isAdmin }) => {
           <>
             <StatCard
               label="Your Earnings"
-              value={`K${earnings?.artistShare || '0.00'}`}
+              value={`K${earnings?.myTotalEarnings || '0.000000'}`}
               change={`Last ${dateRange} days`}
               loading={loading}
             />
@@ -94,8 +94,12 @@ const EarningsPage = ({ artistName, isAdmin }) => {
                   <div className="track-streams">{role.streams.toLocaleString()} streams • {role.trackCount} track{role.trackCount !== 1 ? 's' : ''}</div>
                 </div>
                 <div className="revenue-amounts">
+                  <div className="revenue-total">
+                    <span className="amount-label">Track Total</span>
+                    <span className="amount-value">K{role.trackTotal}</span>
+                  </div>
                   <div className="revenue-artist">
-                    <span className="amount-label">Earnings</span>
+                    <span className="amount-label">Your Earnings</span>
                     <span className="amount-value">K{role.earnings}</span>
                   </div>
                 </div>
@@ -144,14 +148,20 @@ const EarningsPage = ({ artistName, isAdmin }) => {
                         </div>
                         <div className="revenue-platform">
                           <span className="amount-label">Platform</span>
-                          <span className="amount-value">K{(track.revenue * 0.30).toFixed(2)}</span>
+                          <span className="amount-value">K{(track.revenue * 0.30).toFixed(6)}</span>
                         </div>
                       </>
                     ) : (
-                      <div className="revenue-artist">
-                        <span className="amount-label">{track.mySplit ? 'Your Earnings' : 'Earnings'}</span>
-                        <span className="amount-value">K{track.mySplit ? track.myEarnings : track.artistShare}</span>
-                      </div>
+                      <>
+                        <div className="revenue-total">
+                          <span className="amount-label">Track Total</span>
+                          <span className="amount-value">K{track.artistShare}</span>
+                        </div>
+                        <div className="revenue-artist">
+                          <span className="amount-label">Your Earnings</span>
+                          <span className="amount-value">K{track.myEarnings}</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>

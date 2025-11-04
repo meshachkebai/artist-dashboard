@@ -2,17 +2,315 @@ import React from 'react';
 import { useOverviewStats, useTopTracks, useArtistUploadStats } from '../hooks/useAnalytics';
 import StatCard from '../components/shared/StatCard';
 import EmptyState from '../components/shared/EmptyState';
+import { createClient } from '@supabase/supabase-js';
 import './OverviewPage.css';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 const OverviewPage = ({ artistName, isAdmin }) => {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [trackLimit, setTrackLimit] = React.useState(10);
+  const [exporting, setExporting] = React.useState(false);
   const { data: stats, loading: statsLoading } = useOverviewStats(artistName, isAdmin, 30, refreshKey);
   const { data: topTracks, loading: tracksLoading } = useTopTracks(artistName, isAdmin, 30, trackLimit, refreshKey);
   const { data: uploadStats, loading: uploadStatsLoading } = useArtistUploadStats(!isAdmin ? artistName : null);
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+
+      // Get artist ID if not admin
+      let artistId = null;
+      if (!isAdmin) {
+        const { data: artistData } = await supabase
+          .from('artists')
+          .select('id')
+          .eq('name', artistName)
+          .single();
+        artistId = artistData?.id;
+      }
+
+      // Get all tracks (filtered by artist if not admin)
+      let tracksQuery = supabase
+        .from('mvp_content')
+        .select('*')
+        .neq('is_ad', true)
+        .order('created_at', { ascending: false });
+
+      if (!isAdmin && artistId) {
+        const { data: contributions } = await supabase
+          .from('track_contributors')
+          .select('track_id')
+          .eq('artist_id', artistId);
+        
+        const trackIds = contributions?.map(c => c.track_id) || [];
+        if (trackIds.length === 0) {
+          alert('No tracks found to export');
+          return;
+        }
+        tracksQuery = tracksQuery.in('id', trackIds);
+      }
+
+      const { data: tracks } = await tracksQuery;
+
+      if (!tracks || tracks.length === 0) {
+        alert('No tracks found to export');
+        return;
+      }
+
+      const trackIds = tracks.map(t => t.id);
+
+      // Get contributors
+      const { data: contributors } = await supabase
+        .from('track_contributors')
+        .select(`
+          track_id,
+          role,
+          split_percentage,
+          artists (name)
+        `)
+        .in('track_id', trackIds);
+
+      // Get analytics events
+      const { data: events } = await supabase
+        .from('analytics_events')
+        .select('track_id, event_type, duration_seconds, access_code_id')
+        .in('track_id', trackIds);
+
+      // Get user profiles for unique listeners
+      const accessCodeIds = [...new Set(events?.map(e => e.access_code_id).filter(Boolean) || [])];
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('access_code_id, city')
+        .in('access_code_id', accessCodeIds);
+
+      const cityByAccessCode = (profiles || []).reduce((acc, p) => {
+        acc[p.access_code_id] = p.city;
+        return acc;
+      }, {});
+
+      // Calculate stats per track
+      const statsByTrack = {};
+      (events || []).forEach(event => {
+        if (!statsByTrack[event.track_id]) {
+          statsByTrack[event.track_id] = {
+            plays: 0,
+            streams: 0,
+            uniqueListeners: new Set(),
+            cities: {}
+          };
+        }
+
+        if (event.event_type === 'play_start') {
+          statsByTrack[event.track_id].plays++;
+        }
+
+        if (event.event_type === 'play_end' && event.duration_seconds >= 30) {
+          statsByTrack[event.track_id].streams++;
+          if (event.access_code_id) {
+            statsByTrack[event.track_id].uniqueListeners.add(event.access_code_id);
+            const city = cityByAccessCode[event.access_code_id];
+            if (city) {
+              statsByTrack[event.track_id].cities[city] = (statsByTrack[event.track_id].cities[city] || 0) + 1;
+            }
+          }
+        }
+      });
+
+      // Group contributors by track
+      const contributorsByTrack = (contributors || []).reduce((acc, c) => {
+        if (!acc[c.track_id]) acc[c.track_id] = [];
+        acc[c.track_id].push(c);
+        return acc;
+      }, {});
+
+      // Build CSV
+      const csvRows = [];
+      
+      if (isAdmin) {
+        // Admin view: One row per track with separate columns for each contributor
+        csvRows.push([
+          'Track Title',
+          'Artist',
+          'Album',
+          'Genre',
+          'Duration (seconds)',
+          'Upload Date',
+          'Total Plays',
+          'Qualified Streams',
+          'Completion Rate (%)',
+          'Unique Listeners',
+          'Top City',
+          'Top City Streams',
+          'Total Track Earnings (K)',
+          'Contributor 1 Name',
+          'Contributor 1 Role',
+          'Contributor 1 Split %',
+          'Contributor 1 Earnings (K)',
+          'Contributor 2 Name',
+          'Contributor 2 Role',
+          'Contributor 2 Split %',
+          'Contributor 2 Earnings (K)',
+          'Contributor 3 Name',
+          'Contributor 3 Role',
+          'Contributor 3 Split %',
+          'Contributor 3 Earnings (K)',
+          'Contributor 4 Name',
+          'Contributor 4 Role',
+          'Contributor 4 Split %',
+          'Contributor 4 Earnings (K)',
+          'Contributor 5 Name',
+          'Contributor 5 Role',
+          'Contributor 5 Split %',
+          'Contributor 5 Earnings (K)'
+        ].join(','));
+
+        tracks.forEach(track => {
+          const stats = statsByTrack[track.id] || { plays: 0, streams: 0, uniqueListeners: new Set(), cities: {} };
+          const completionRate = stats.plays > 0 ? Math.round((stats.streams / stats.plays) * 100) : 0;
+          const topCity = Object.entries(stats.cities).sort((a, b) => b[1] - a[1])[0];
+          
+          // Full precision earnings - no rounding
+          const totalEarnings = (stats.streams * 0.001 * 0.70).toFixed(6);
+          
+          const trackContributors = contributorsByTrack[track.id] || [];
+          
+          // Build row with track data
+          const row = [
+            `"${track.title}"`,
+            `"${track.artist}"`,
+            `"${track.album || ''}"`,
+            `"${track.genre || ''}"`,
+            track.duration_seconds,
+            new Date(track.created_at).toLocaleDateString(),
+            stats.plays,
+            stats.streams,
+            completionRate,
+            stats.uniqueListeners.size,
+            topCity ? `"${topCity[0]}"` : '',
+            topCity ? topCity[1] : 0,
+            totalEarnings
+          ];
+
+          // Add up to 5 contributors (expand columns as needed)
+          for (let i = 0; i < 5; i++) {
+            if (trackContributors[i]) {
+              const contributor = trackContributors[i];
+              const split = contributor.split_percentage || 0;
+              
+              // Full precision earnings - no rounding
+              const earnings = split > 0 
+                ? ((stats.streams * 0.001 * 0.70 * split) / 100).toFixed(6)
+                : '0.000000';
+              
+              row.push(
+                `"${contributor.artists.name}"`,
+                contributor.role,
+                split,
+                earnings
+              );
+            } else {
+              // Empty contributor slot
+              row.push('', '', '', '');
+            }
+          }
+
+          csvRows.push(row.join(','));
+        });
+      } else {
+        // Artist view: Show personal data
+        csvRows.push([
+          'Track Title',
+          'Artist',
+          'Album',
+          'Genre',
+          'Duration (seconds)',
+          'Upload Date',
+          'Total Plays',
+          'Qualified Streams',
+          'Completion Rate (%)',
+          'Unique Listeners',
+          'Top City',
+          'Top City Streams',
+          'Total Earnings (K)',
+          'Your Role',
+          'Your Split (%)',
+          'Your Earnings (K)',
+          'All Contributors'
+        ].join(','));
+
+        tracks.forEach(track => {
+          const stats = statsByTrack[track.id] || { plays: 0, streams: 0, uniqueListeners: new Set(), cities: {} };
+          const completionRate = stats.plays > 0 ? Math.round((stats.streams / stats.plays) * 100) : 0;
+          const topCity = Object.entries(stats.cities).sort((a, b) => b[1] - a[1])[0];
+          
+          // Full precision earnings - no rounding
+          const totalEarnings = (stats.streams * 0.001 * 0.70).toFixed(6);
+          
+          const trackContributors = contributorsByTrack[track.id] || [];
+          const myContribution = trackContributors.find(c => c.artists.name === artistName);
+          const myRole = myContribution?.role || 'N/A';
+          const mySplit = myContribution?.split_percentage || 0;
+          
+          // Full precision earnings - no rounding
+          const myEarnings = mySplit > 0 
+            ? ((stats.streams * 0.001 * 0.70 * mySplit) / 100).toFixed(6)
+            : '0.000000';
+          
+          const allContributors = trackContributors
+            .map(c => `${c.artists.name} (${c.role}${c.split_percentage ? ` ${c.split_percentage}%` : ''})`)
+            .join('; ');
+
+          csvRows.push([
+            `"${track.title}"`,
+            `"${track.artist}"`,
+            `"${track.album || ''}"`,
+            `"${track.genre || ''}"`,
+            track.duration_seconds,
+            new Date(track.created_at).toLocaleDateString(),
+            stats.plays,
+            stats.streams,
+            completionRate,
+            stats.uniqueListeners.size,
+            topCity ? `"${topCity[0]}"` : '',
+            topCity ? topCity[1] : 0,
+            totalEarnings,
+            myRole,
+            mySplit,
+            myEarnings,
+            `"${allContributors}"`
+          ].join(','));
+        });
+      }
+
+      // Download CSV
+      const csv = csvRows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pairap-export-${artistName || 'all'}-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -24,12 +322,22 @@ const OverviewPage = ({ artistName, isAdmin }) => {
             {isAdmin ? 'Platform-wide statistics (Last 30 days)' : `Welcome back, ${artistName}`}
           </p>
         </div>
-        <button onClick={handleRefresh} className="refresh-btn" disabled={statsLoading || tracksLoading}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-          </svg>
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button onClick={handleExport} className="refresh-btn" disabled={exporting}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            {exporting ? 'Exporting...' : 'Export Data'}
+          </button>
+          <button onClick={handleRefresh} className="refresh-btn" disabled={statsLoading || tracksLoading}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="stats-grid">

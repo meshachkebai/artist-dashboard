@@ -68,7 +68,9 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     contributingSplits: [],
     splitAgreementSigned: false,
     has_explicit_language: false,
-    has_adult_themes: false
+    has_adult_themes: false,
+    source_url: '',
+    license_url: ''
   });
 
   // Metadata detection state
@@ -216,7 +218,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       // Get analytics for all tracks
       const { data: allEvents, error: eventsError } = await supabase
         .from('analytics_events')
-        .select('track_id, event_type, duration_seconds, access_code_id')
+        .select('track_id, event_type, duration_seconds, access_code_id, timestamp')
         .in('track_id', trackIds);
 
       console.log('App.jsx - Track IDs:', trackIds);
@@ -250,17 +252,20 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
           };
         }
 
+        // Count play_start events for total plays
         if (event.event_type === 'play_start') {
           acc[event.track_id].totalPlays++;
         }
 
+        // Count qualified streams (play_end with 30+ seconds)
         if (event.event_type === 'play_end' && event.duration_seconds >= 30) {
           acc[event.track_id].qualifiedStreams++;
-
+          
           // Track city for qualified streams
           const city = cityByAccessCode[event.access_code_id];
           if (city) {
-            acc[event.track_id].cityCounts[city] = (acc[event.track_id].cityCounts[city] || 0) + 1;
+            acc[event.track_id].cityCounts[city] = 
+              (acc[event.track_id].cityCounts[city] || 0) + 1;
           }
         }
 
@@ -638,6 +643,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
           artist_credits: artistCredits,
           has_explicit_language: uploadForm.has_explicit_language,
           has_adult_themes: uploadForm.has_adult_themes,
+          source_url: uploadForm.source_url || null,
+          license_url: uploadForm.license_url || null
         };
 
         // Only update artwork if new one provided
@@ -678,6 +685,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             artist_credits: artistCredits,
             has_explicit_language: uploadForm.has_explicit_language,
             has_adult_themes: uploadForm.has_adult_themes,
+            source_url: uploadForm.source_url || null,
+            license_url: uploadForm.license_url || null
           })
           .select()
           .single();
@@ -724,7 +733,9 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         contributingSplits: [],
         splitAgreementSigned: false,
         has_explicit_language: false,
-        has_adult_themes: false
+        has_adult_themes: false,
+        source_url: '',
+        license_url: ''
       });
 
       // Reset metadata detection state
@@ -831,6 +842,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       contributingSplits: hasContributing ? credits.contributing.map(c => c.split || '') : [],
       has_explicit_language: track.has_explicit_language || false,
       has_adult_themes: track.has_adult_themes || false,
+      source_url: track.source_url || '',
+      license_url: track.license_url || ''
     });
   };
 
@@ -862,7 +875,9 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       contributingSplits: [],
       splitAgreementSigned: false,
       has_explicit_language: false,
-      has_adult_themes: false
+      has_adult_themes: false,
+      source_url: '',
+      license_url: ''
     });
   };
 
@@ -1038,6 +1053,36 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
     }
   };
 
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter tracks based on search query
+  const filteredTracks = searchQuery.trim()
+    ? tracks.filter(track => {
+        const query = searchQuery.toLowerCase();
+        return (
+          track.title?.toLowerCase().includes(query) ||
+          track.artist?.toLowerCase().includes(query) ||
+          track.album?.toLowerCase().includes(query) ||
+          track.genre?.toLowerCase().includes(query)
+        );
+      })
+    : tracks;
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const tracksPerPage = 10;
+  const totalPages = Math.ceil(filteredTracks.length / tracksPerPage);
+  const startIndex = (currentPage - 1) * tracksPerPage;
+  const endIndex = startIndex + tracksPerPage;
+  const currentTracks = filteredTracks.slice(startIndex, endIndex);
+
+  // Reset to page 1 when tracks or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tracks.length, searchQuery]);
+
   // Show My Credits page for contributors
   console.log('Account Type:', accountType, 'Artist Name:', artistName);
   if (accountType === 'contributor') {
@@ -1180,6 +1225,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     value={uploadForm.title}
                     onChange={handleInputChange}
                     required
+                    disabled={!editingTrack && !uploadForm.file}
                     placeholder="Enter track title"
                   />
                 </div>
@@ -1211,9 +1257,14 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                       name="artist"
                       value={isAdmin ? uploadForm.artist : artistName}
                       onChange={handleInputChange}
-                      placeholder={isAdmin ? "Enter primary artist name" : artistName}
+                      placeholder={isAdmin ? "" : artistName}
                       required
                       readOnly={!isAdmin}
+                      disabled={!editingTrack && !uploadForm.file}
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
                       style={!isAdmin ? { cursor: 'not-allowed', opacity: 0.6 } : {}}
                     />
                   </div>
@@ -1805,7 +1856,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                       name="album"
                       value={uploadForm.album}
                       onChange={handleInputChange}
-                      disabled={uploadForm.isSingle}
+                      disabled={uploadForm.isSingle || (!editingTrack && !uploadForm.file)}
                       placeholder={uploadForm.isSingle ? "Auto-generated for singles" : "Enter album name"}
                     />
                   </div>
@@ -1828,7 +1879,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     onChange={handleInputChange}
                     placeholder={uploadForm.isSingle ? "1" : "e.g., 1, 2, 3..."}
                     min="1"
-                    disabled={uploadForm.isSingle || editingTrack}
+                    disabled={uploadForm.isSingle || editingTrack || (!editingTrack && !uploadForm.file)}
                     title={uploadForm.isSingle ? 'Singles are always track #1' : (editingTrack ? 'Track number cannot be changed when editing' : '')}
                     style={{
                       cursor: uploadForm.isSingle || editingTrack ? 'not-allowed' : '',
@@ -1849,7 +1900,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     placeholder="2024"
                     min="1900"
                     max={new Date().getFullYear() + 1}
-                    disabled={editingTrack}
+                    disabled={editingTrack || (!editingTrack && !uploadForm.file)}
                     style={editingTrack ? { cursor: 'not-allowed', opacity: 0.6 } : {}}
                   />
                 </div>
@@ -1861,6 +1912,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     name="genre"
                     value={uploadForm.genre}
                     onChange={handleInputChange}
+                    disabled={!editingTrack && !uploadForm.file}
                   >
                     <option value="">Select genre</option>
                     <option value="Pop">Pop</option>
@@ -1926,7 +1978,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     onChange={handleInputChange}
                     placeholder="180"
                     min="1"
-                    disabled={editingTrack || (detectedDuration > 0 && !detectionError)}
+                    disabled={editingTrack || (detectedDuration > 0 && !detectionError) || (!editingTrack && !uploadForm.file)}
                     title={editingTrack ? 'Duration cannot be changed when editing' : (detectedDuration > 0 && !detectionError ? 'Duration automatically detected from audio file' : '')}
                     style={{
                       borderColor: detectedDuration > 0 && !detectionError ? 'var(--success, #28a745)' : '',
@@ -1950,10 +2002,41 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     name="artwork"
                     onChange={handleFileChange}
                     accept="image/*"
-                    disabled={editingTrack}
-                    style={editingTrack ? { cursor: 'not-allowed', opacity: 0.5, background: 'var(--bg-tertiary)' } : {}}
+                    disabled={!editingTrack && !uploadForm.file}
+                    style={(!editingTrack && !uploadForm.file) ? { cursor: 'not-allowed', opacity: 0.5, background: 'var(--bg-tertiary)' } : {}}
                   />
                 </div>
+
+                {/* Licensed Content Fields (Admin Only) */}
+                {isAdmin && (
+                  <>
+                    <div className="form-group">
+                      <label htmlFor="source_url">Source URL</label>
+                      <input
+                        type="url"
+                        id="source_url"
+                        name="source_url"
+                        value={uploadForm.source_url}
+                        onChange={handleInputChange}
+                        disabled={!editingTrack && !uploadForm.file}
+                        placeholder="https://soundcloud.com/..."
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="license_url">License URL</label>
+                      <input
+                        type="url"
+                        id="license_url"
+                        name="license_url"
+                        value={uploadForm.license_url}
+                        onChange={handleInputChange}
+                        disabled={!editingTrack && !uploadForm.file}
+                        placeholder="https://creativecommons.org/licenses/by/3.0/"
+                      />
+                    </div>
+                  </>
+                )}
 
                 {/* Technical metadata display */}
                 {detectedMetadata && (
@@ -2314,19 +2397,110 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
         )}
 
         <div className="tracks-section card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h2 style={{ color: 'var(--brand-primary)', margin: 0 }}>
-              Recent Tracks ({tracks.length})
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+            {/* Previous Page - Far Left */}
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1 || loading || filteredTracks.length <= tracksPerPage}
+              className="pagination-btn"
+              title="Previous page"
+              aria-label="Previous page"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+
+            {/* Title with Page Info - Center */}
+            <h2 style={{ color: 'var(--brand-primary)', margin: 0, flex: '1', textAlign: 'center', fontSize: '1.25rem' }}>
+              {isAdmin ? 'All Tracks' : 'Recent Tracks'} ({filteredTracks.length}{searchQuery && ` of ${tracks.length}`})
+              {filteredTracks.length > tracksPerPage && (
+                <span style={{ fontSize: '0.875rem', fontWeight: '500', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>
+                  page {currentPage}/{totalPages}
+                </span>
+              )}
             </h2>
-            <button onClick={loadTracks} className="btn btn-secondary refresh-btn">
-              Refresh
+            
+            {/* Controls - Right Side */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* Search Button */}
+              <button 
+                onClick={() => {
+                  setSearchOpen(!searchOpen);
+                  if (searchOpen) {
+                    setSearchQuery('');
+                  }
+                }}
+                className="btn btn-secondary refresh-btn"
+                title={searchOpen ? "Close search" : "Search tracks"}
+                aria-label={searchOpen ? "Close search" : "Search tracks"}
+                style={searchOpen ? { background: 'var(--brand-primary)', color: 'white' } : {}}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {searchOpen ? (
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  ) : (
+                    <>
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <path d="m21 21-4.35-4.35"></path>
+                    </>
+                  )}
+                </svg>
+              </button>
+
+              {/* Refresh Button */}
+              <button 
+                onClick={loadTracks} 
+                className="btn btn-secondary refresh-btn"
+                title="Refresh tracks"
+                aria-label="Refresh tracks"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Next Page - Far Right */}
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages || loading || filteredTracks.length <= tracksPerPage}
+              className="pagination-btn"
+              title="Next page"
+              aria-label="Next page"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
             </button>
           </div>
+
+          {/* Search Input - Appears Below Header */}
+          {searchOpen && (
+            <div style={{ marginBottom: '1rem' }}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by title, artist, album, or genre..."
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  fontSize: '0.875rem',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)'
+                }}
+              />
+            </div>
+          )}
 
           {loading && <p className="text-muted">Loading tracks...</p>}
 
           <div className="tracks-list">
-            {tracks.slice(0, 10).map((track) => (
+            {currentTracks.map((track) => (
               <div key={track.id} className="track-item card">
                 <div className="track-info">
                   <h3 style={{ color: 'var(--brand-accent)', margin: '0 0 0.5rem 0' }}>
@@ -2365,6 +2539,25 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     <strong>Genre:</strong> {track.genre || 'Unknown'} | <strong>Duration:</strong> {Math.floor(track.duration / 1000)}s | <strong>Uploaded:</strong> {new Date(track.created_at).toLocaleDateString()}
                   </p>
 
+                  {/* Licensed Content Attribution (Admin Only) */}
+                  {isAdmin && track.source_url && (
+                    <p className="text-secondary" style={{ marginTop: '0.5rem' }}>
+                      <strong>Source:</strong>{' '}
+                      <a href={track.source_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)' }}>
+                        {track.source_url}
+                      </a>
+                      {track.license_url && (
+                        <>
+                          {' | '}
+                          <strong>License:</strong>{' '}
+                          <a href={track.license_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)' }}>
+                            {track.license_url}
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  )}
+
                   {track.analytics && (
                     <div className="track-analytics" style={{
                       color: 'var(--text-secondary, #666)',
@@ -2380,7 +2573,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                             color: 'var(--success, #28a745)',
                             fontWeight: '600'
                           }}>
-                            • Your Split: {track.mySplit}% • Earnings: K{((track.analytics.qualifiedStreams * 0.001 * 0.70 * track.mySplit) / 100).toFixed(2)}
+                            • Your Split: {track.mySplit}% • Earnings: K{((track.analytics.qualifiedStreams * 0.001 * 0.70 * track.mySplit) / 100).toFixed(6)}
                           </span>
                         )}
                       </p>
@@ -2475,7 +2668,11 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
             ))}
           </div>
 
-          {tracks.length === 0 && !loading && (
+          {filteredTracks.length === 0 && !loading && searchQuery && (
+            <p className="text-muted empty-state">No tracks match "{searchQuery}". Try a different search.</p>
+          )}
+
+          {tracks.length === 0 && !loading && !searchQuery && (
             <p className="text-muted empty-state">No tracks found. Upload your first track above!</p>
           )}
         </div>

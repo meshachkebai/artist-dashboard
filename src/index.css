@@ -107,7 +107,6 @@ body {
 }
 
 .card:hover {
-  background-color: var(--bg-tertiary);
   transform: translateY(-2px);
 }
 

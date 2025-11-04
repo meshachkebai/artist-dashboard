@@ -69,6 +69,23 @@ export const useEarningsByRole = (artistName, dateRange = 30) => {
           return;
         }
 
+        // First get existing track IDs from mvp_content
+        const { data: existingTracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('id');
+
+        if (tracksError) throw tracksError;
+
+        const existingTrackIds = new Set(existingTracks?.map(t => t.id) || []);
+
+        // Filter to only include tracks that still exist
+        const validTrackIds = trackIds.filter(id => existingTrackIds.has(id));
+
+        if (validTrackIds.length === 0) {
+          setData({ byRole: [], total: 0 });
+          return;
+        }
+
         // Get analytics events for these tracks
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
@@ -79,7 +96,7 @@ export const useEarningsByRole = (artistName, dateRange = 30) => {
           .eq('event_type', 'play_end')
           .gte('duration_seconds', 30)
           .gte('timestamp', startDate.toISOString())
-          .in('track_id', trackIds);
+          .in('track_id', validTrackIds);
 
         if (eventsError) throw eventsError;
 
@@ -116,12 +133,14 @@ export const useEarningsByRole = (artistName, dateRange = 30) => {
             roleEarnings[contrib.role] = {
               role: contrib.role,
               earnings: 0,
+              trackTotal: 0,
               streams: 0,
               tracks: new Set()
             };
           }
 
           roleEarnings[contrib.role].earnings += myShare;
+          roleEarnings[contrib.role].trackTotal += artistShare;
           roleEarnings[contrib.role].streams += (earningsByTrack[contrib.track_id] || 0) / 0.001;
           roleEarnings[contrib.role].tracks.add(contrib.track_id);
         });
@@ -130,7 +149,8 @@ export const useEarningsByRole = (artistName, dateRange = 30) => {
         const byRole = Object.values(roleEarnings)
           .map(role => ({
             role: role.role,
-            earnings: role.earnings.toFixed(2),
+            earnings: role.earnings.toFixed(6),
+            trackTotal: role.trackTotal.toFixed(6),
             streams: Math.round(role.streams),
             trackCount: role.tracks.size
           }))

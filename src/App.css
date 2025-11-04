@@ -200,7 +200,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem;
   border: none;
   border-radius: 6px;
   font-size: 0.8125rem;
@@ -215,6 +215,35 @@
 
 .refresh-btn:hover {
   background-color: var(--bg-tertiary);
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: var(--bg-tertiary);
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pagination-btn svg {
+  display: block;
 }
 
 .tracks-list {
@@ -238,9 +267,14 @@
   transition: all 0.2s ease;
 }
 
+.track-item a {
+  text-decoration: none;
+}
+
 .track-item:hover {
-  box-shadow: var(--shadow-sm);
-  background-color: var(--bg-tertiary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: var(--brand-primary);
 }
 
 .track-info {

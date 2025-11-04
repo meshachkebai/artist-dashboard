@@ -97,18 +97,48 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
         const eventTrackIds = nonAdEvents.map(e => e.track_id).filter(Boolean);
         const uniqueTracks = new Set(eventTrackIds).size;
         const totalStreams = nonAdEvents.length;
-        const estimatedRevenue = totalStreams * 0.001;
+        
+        let estimatedRevenue;
+        
+        if (isAdmin) {
+          // Admin sees total platform revenue (gross)
+          estimatedRevenue = totalStreams * 0.001;
+        } else {
+          // Artist sees their actual earnings after platform split and contributor splits
+          // Get contributor splits for this artist
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id, split_percentage')
+            .eq('artist_id', artistId);
+          
+          const splitsByTrack = (contributions || []).reduce((acc, c) => {
+            acc[c.track_id] = c.split_percentage || 0;
+            return acc;
+          }, {});
+          
+          // Calculate earnings per stream based on artist's split
+          let totalArtistEarnings = 0;
+          nonAdEvents.forEach(event => {
+            const artistSplit = splitsByTrack[event.track_id] || 0;
+            const streamRevenue = 0.001 * 0.70; // Platform gives 70% to artists
+            const artistShare = (streamRevenue * artistSplit) / 100;
+            totalArtistEarnings += artistShare;
+          });
+          
+          estimatedRevenue = totalArtistEarnings;
+        }
 
         console.log('📊 OVERVIEW STATS - Active Tracks (from analytics events):');
         console.log('  Total events (non-ad):', nonAdEvents.length);
         console.log('  Unique track IDs:', uniqueTracks);
         console.log('  Track IDs:', Array.from(new Set(eventTrackIds)));
+        console.log('  Estimated Revenue:', estimatedRevenue);
 
         setData({
           totalStreams,
           uniqueListeners,
           totalTracks: uniqueTracks,
-          estimatedRevenue: estimatedRevenue.toFixed(2)
+          estimatedRevenue: estimatedRevenue.toFixed(6)
         });
       } catch (err) {
         console.error('Error fetching overview stats:', err);
@@ -159,6 +189,15 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
           trackIds = contributions?.map(c => c.track_id) || [];
         }
 
+        // First get existing track IDs from mvp_content
+        const { data: existingTracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('id');
+
+        if (tracksError) throw tracksError;
+
+        const existingTrackIds = new Set(existingTracks?.map(t => t.id) || []);
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -169,7 +208,16 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
           .not('artist_name', 'is', null);
 
         if (trackIds && trackIds.length > 0) {
-          query = query.in('track_id', trackIds);
+          // Filter by both artist's tracks AND existing tracks
+          const validTrackIds = trackIds.filter(id => existingTrackIds.has(id));
+          if (validTrackIds.length === 0) {
+            setData([]);
+            return;
+          }
+          query = query.in('track_id', validTrackIds);
+        } else {
+          // Admin view: filter by all existing tracks
+          query = query.in('track_id', Array.from(existingTrackIds));
         }
 
         const { data: events, error: queryError } = await query;
@@ -275,6 +323,15 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
           trackIds = contributions?.map(c => c.track_id) || [];
         }
 
+        // First get existing track IDs from mvp_content
+        const { data: existingTracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('id');
+
+        if (tracksError) throw tracksError;
+
+        const existingTrackIds = new Set(existingTracks?.map(t => t.id) || []);
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -283,7 +340,16 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
           .gte('timestamp', startDate.toISOString());
 
         if (trackIds && trackIds.length > 0) {
-          query = query.in('track_id', trackIds);
+          // Filter by both artist's tracks AND existing tracks
+          const validTrackIds = trackIds.filter(id => existingTrackIds.has(id));
+          if (validTrackIds.length === 0) {
+            setData([]);
+            return;
+          }
+          query = query.in('track_id', validTrackIds);
+        } else {
+          // Admin view: filter by all existing tracks
+          query = query.in('track_id', Array.from(existingTrackIds));
         }
 
         const { data: events, error: queryError } = await query;
@@ -371,6 +437,15 @@ export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
           trackIds = contributions?.map(c => c.track_id) || [];
         }
 
+        // First get existing track IDs from mvp_content
+        const { data: existingTracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('id');
+
+        if (tracksError) throw tracksError;
+
+        const existingTrackIds = new Set(existingTracks?.map(t => t.id) || []);
+
         let eventsQuery = supabase
           .from('analytics_events')
           .select('access_code_id, track_id')
@@ -379,7 +454,16 @@ export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
           .gte('timestamp', startDate.toISOString());
 
         if (trackIds && trackIds.length > 0) {
-          eventsQuery = eventsQuery.in('track_id', trackIds);
+          // Filter by both artist's tracks AND existing tracks
+          const validTrackIds = trackIds.filter(id => existingTrackIds.has(id));
+          if (validTrackIds.length === 0) {
+            setData({ gender: [], ageRange: [] });
+            return;
+          }
+          eventsQuery = eventsQuery.in('track_id', validTrackIds);
+        } else {
+          // Admin view: filter by all existing tracks
+          eventsQuery = eventsQuery.in('track_id', Array.from(existingTrackIds));
         }
 
         const { data: events, error: eventsError } = await eventsQuery;
@@ -491,6 +575,15 @@ export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
           trackIds = contributions?.map(c => c.track_id) || [];
         }
 
+        // First get existing track IDs from mvp_content
+        const { data: existingTracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('id');
+
+        if (tracksError) throw tracksError;
+
+        const existingTrackIds = new Set(existingTracks?.map(t => t.id) || []);
+
         let eventsQuery = supabase
           .from('analytics_events')
           .select('access_code_id, track_id')
@@ -499,7 +592,16 @@ export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
           .gte('timestamp', startDate.toISOString());
 
         if (trackIds && trackIds.length > 0) {
-          eventsQuery = eventsQuery.in('track_id', trackIds);
+          // Filter by both artist's tracks AND existing tracks
+          const validTrackIds = trackIds.filter(id => existingTrackIds.has(id));
+          if (validTrackIds.length === 0) {
+            setData([]);
+            return;
+          }
+          eventsQuery = eventsQuery.in('track_id', validTrackIds);
+        } else {
+          // Admin view: filter by all existing tracks
+          eventsQuery = eventsQuery.in('track_id', Array.from(existingTrackIds));
         }
 
         const { data: events, error: eventsError } = await eventsQuery;
@@ -614,6 +716,15 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
           }, {}) || {};
         }
 
+        // First get existing track IDs from mvp_content
+        const { data: existingTracks, error: tracksError } = await supabase
+          .from('mvp_content')
+          .select('id');
+
+        if (tracksError) throw tracksError;
+
+        const existingTrackIds = new Set(existingTracks?.map(t => t.id) || []);
+
         let query = supabase
           .from('analytics_events')
           .select('*')
@@ -623,7 +734,21 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
           .not('track_title', 'is', null);
 
         if (trackIds && trackIds.length > 0) {
-          query = query.in('track_id', trackIds);
+          // Filter by both artist's tracks AND existing tracks
+          const validTrackIds = trackIds.filter(id => existingTrackIds.has(id));
+          if (validTrackIds.length === 0) {
+            setData({
+              totalRevenue: 0,
+              artistShare: 0,
+              platformFee: 0,
+              byTrack: []
+            });
+            return;
+          }
+          query = query.in('track_id', validTrackIds);
+        } else {
+          // Admin view: filter by all existing tracks
+          query = query.in('track_id', Array.from(existingTrackIds));
         }
 
         const { data: events, error: queryError } = await query;
@@ -701,24 +826,30 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
               name: c.artists.name,
               role: c.role,
               split: c.split_percentage,
-              earnings: c.split_percentage ? ((artistShareTotal * c.split_percentage) / 100).toFixed(2) : null
+              earnings: c.split_percentage ? ((artistShareTotal * c.split_percentage) / 100).toFixed(6) : null
             }));
             
             return {
               ...track,
-              revenue: track.revenue.toFixed(2),
-              artistShare: artistShareTotal.toFixed(2),
+              revenue: track.revenue.toFixed(6),
+              artistShare: artistShareTotal.toFixed(6),
               mySplit: split || null,
-              myEarnings: mySplit.toFixed(2),
+              myEarnings: mySplit.toFixed(6),
               contributors: contributorEarnings
             };
           })
           .sort((a, b) => b.streams - a.streams);
 
+        // Calculate total earnings for this specific artist (sum of myEarnings)
+        const myTotalEarnings = isAdmin 
+          ? artistShare 
+          : byTrack.reduce((sum, track) => sum + parseFloat(track.myEarnings), 0);
+
         setData({
-          totalRevenue: totalRevenue.toFixed(2),
-          artistShare: artistShare.toFixed(2),
-          platformFee: platformFee.toFixed(2),
+          totalRevenue: totalRevenue.toFixed(6),
+          artistShare: artistShare.toFixed(6),
+          platformFee: platformFee.toFixed(6),
+          myTotalEarnings: myTotalEarnings.toFixed(6),
           byTrack
         });
       } catch (err) {
@@ -762,11 +893,25 @@ export const usePlatformStats = () => {
 
         if (tracksError) throw tracksError;
 
+        // Get existing track IDs to filter analytics
+        const existingTrackIds = tracks?.map(t => t.id) || [];
+
+        if (existingTrackIds.length === 0) {
+          setData({
+            totalArtists: artists?.length || 0,
+            totalTracks: 0,
+            totalStreams: 0,
+            totalRevenue: '0.00'
+          });
+          return;
+        }
+
         const { data: events, error: eventsError } = await supabase
           .from('analytics_events')
           .select('*')
           .eq('event_type', 'play_end')
-          .gte('duration_seconds', 30);
+          .gte('duration_seconds', 30)
+          .in('track_id', existingTrackIds);
 
         if (eventsError) throw eventsError;
 
