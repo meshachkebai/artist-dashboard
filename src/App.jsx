@@ -260,11 +260,11 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         // Count qualified streams (play_end with 30+ seconds)
         if (event.event_type === 'play_end' && event.duration_seconds >= 30) {
           acc[event.track_id].qualifiedStreams++;
-          
+
           // Track city for qualified streams
           const city = cityByAccessCode[event.access_code_id];
           if (city) {
-            acc[event.track_id].cityCounts[city] = 
+            acc[event.track_id].cityCounts[city] =
               (acc[event.track_id].cityCounts[city] || 0) + 1;
           }
         }
@@ -1060,14 +1060,14 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
   // Filter tracks based on search query
   const filteredTracks = searchQuery.trim()
     ? tracks.filter(track => {
-        const query = searchQuery.toLowerCase();
-        return (
-          track.title?.toLowerCase().includes(query) ||
-          track.artist?.toLowerCase().includes(query) ||
-          track.album?.toLowerCase().includes(query) ||
-          track.genre?.toLowerCase().includes(query)
-        );
-      })
+      const query = searchQuery.toLowerCase();
+      return (
+        track.title?.toLowerCase().includes(query) ||
+        track.artist?.toLowerCase().includes(query) ||
+        track.album?.toLowerCase().includes(query) ||
+        track.genre?.toLowerCase().includes(query)
+      );
+    })
     : tracks;
 
   // Pagination state
@@ -1257,7 +1257,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                       name="artist"
                       value={isAdmin ? uploadForm.artist : artistName}
                       onChange={handleInputChange}
-                      placeholder={isAdmin ? "" : artistName}
+                      placeholder={isAdmin ? "Enter artist name" : ""}
                       required
                       readOnly={!isAdmin}
                       disabled={!editingTrack && !uploadForm.file}
@@ -2420,11 +2420,11 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                 </span>
               )}
             </h2>
-            
+
             {/* Controls - Right Side */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               {/* Search Button */}
-              <button 
+              <button
                 onClick={() => {
                   setSearchOpen(!searchOpen);
                   if (searchOpen) {
@@ -2438,7 +2438,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {searchOpen ? (
-                    <path d="M18 6L6 18M6 6l12 12"/>
+                    <path d="M18 6L6 18M6 6l12 12" />
                   ) : (
                     <>
                       <circle cx="11" cy="11" r="8"></circle>
@@ -2449,14 +2449,14 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
               </button>
 
               {/* Refresh Button */}
-              <button 
-                onClick={loadTracks} 
+              <button
+                onClick={loadTracks}
                 className="btn btn-secondary refresh-btn"
                 title="Refresh tracks"
                 aria-label="Refresh tracks"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
                 </svg>
               </button>
             </div>
