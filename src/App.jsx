@@ -104,10 +104,16 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
 
   // Auto-fill artist name for non-admin users
   useEffect(() => {
-    if (!isAdmin && artistName && !uploadForm.artist) {
+    if (!isAdmin && artistName) {
       setUploadForm(prev => ({
         ...prev,
         artist: artistName
+      }));
+    } else if (isAdmin && uploadForm.artist === artistName) {
+      // Clear the field if admin and it's set to "admin"
+      setUploadForm(prev => ({
+        ...prev,
+        artist: ''
       }));
     }
   }, [artistName, isAdmin]);
@@ -1255,7 +1261,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                       type="text"
                       id="artist"
                       name="artist"
-                      value={isAdmin ? uploadForm.artist : artistName}
+                      value={uploadForm.artist}
                       onChange={handleInputChange}
                       placeholder={isAdmin ? "Enter artist name" : ""}
                       required
