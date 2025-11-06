@@ -15,13 +15,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const OverviewPage = ({ artistName, isAdmin }) => {
+const OverviewPage = ({ artistName, artistId, isAdmin }) => {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [trackLimit, setTrackLimit] = React.useState(10);
   const [exporting, setExporting] = React.useState(false);
-  const { data: stats, loading: statsLoading } = useOverviewStats(artistName, isAdmin, 30, refreshKey);
-  const { data: topTracks, loading: tracksLoading } = useTopTracks(artistName, isAdmin, 30, trackLimit, refreshKey);
-  const { data: uploadStats, loading: uploadStatsLoading } = useArtistUploadStats(!isAdmin ? artistName : null);
+  const { data: stats, loading: statsLoading } = useOverviewStats(artistId, isAdmin, 30, refreshKey);
+  const { data: topTracks, loading: tracksLoading } = useTopTracks(artistId, isAdmin, 30, trackLimit, refreshKey);
+  const { data: uploadStats, loading: uploadStatsLoading } = useArtistUploadStats(!isAdmin ? artistId : null);
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
@@ -31,16 +31,7 @@ const OverviewPage = ({ artistName, isAdmin }) => {
     try {
       setExporting(true);
 
-      // Get artist ID if not admin
-      let artistId = null;
-      if (!isAdmin) {
-        const { data: artistData } = await supabase
-          .from('artists')
-          .select('id')
-          .eq('name', artistName)
-          .single();
-        artistId = artistData?.id;
-      }
+      // Use artistId directly (already available from props)
 
       // Get all tracks (filtered by artist if not admin)
       let tracksQuery = supabase

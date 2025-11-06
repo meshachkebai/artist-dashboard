@@ -29,7 +29,7 @@ const isAdEvent = (event, adTrackIds, adTrackTitles) => {
   return adTrackIds.has(event.track_id) || adTrackTitles.has(event.track_title);
 };
 
-export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey = 0) => {
+export const useOverviewStats = (artistId, isAdmin, dateRange = 30, refreshKey = 0) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,28 +40,42 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
         setLoading(true);
         setError(null);
 
+        console.log('🔍 useOverviewStats called with:', { artistId, isAdmin, dateRange });
+
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
-        // Get artist_id if filtering by artist
-        let artistId = null;
-        if (!isAdmin && artistName) {
-          const { data: artistData } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artistName)
-            .single();
-          artistId = artistData?.id;
-        }
-
         // Get track IDs for this artist
         let trackIds = null;
-        if (artistId) {
+        if (!isAdmin && artistId) {
+          console.log('📊 Fetching contributions for artist ID:', artistId);
           const { data: contributions } = await supabase
             .from('track_contributors')
             .select('track_id')
             .eq('artist_id', artistId);
           trackIds = contributions?.map(c => c.track_id) || [];
+          console.log('📊 Found track IDs for artist:', trackIds);
+        } else if (!isAdmin && !artistId) {
+          console.error('❌ Artist mode but artistId is null - artist not in database. Returning empty data.');
+          setData({
+            totalStreams: 0,
+            uniqueListeners: 0,
+            totalTracks: 0,
+            estimatedRevenue: '0.000000'
+          });
+          return;
+        }
+
+        // If artist has no tracks, return empty
+        if (!isAdmin && trackIds && trackIds.length === 0) {
+          console.warn('⚠️ Artist has no tracks in track_contributors');
+          setData({
+            totalStreams: 0,
+            uniqueListeners: 0,
+            totalTracks: 0,
+            estimatedRevenue: '0.000000'
+          });
+          return;
         }
 
         let query = supabase
@@ -149,12 +163,12 @@ export const useOverviewStats = (artistName, isAdmin, dateRange = 30, refreshKey
     };
 
     fetchStats();
-  }, [artistName, isAdmin, dateRange, refreshKey]);
+  }, [artistId, isAdmin, dateRange, refreshKey]);
 
   return { data, loading, error };
 };
 
-export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, refreshKey = 0) => {
+export const useTopTracks = (artistId, isAdmin, dateRange = 30, limit = 10, refreshKey = 0) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -168,25 +182,28 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
-        // Get artist_id if filtering by artist
-        let artistId = null;
-        if (!isAdmin && artistName) {
-          const { data: artistData } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artistName)
-            .single();
-          artistId = artistData?.id;
-        }
-
         // Get track IDs for this artist
         let trackIds = null;
-        if (artistId) {
+        if (!isAdmin && !artistId) {
+          // Artist not in database - return empty data
+          console.error('❌ Artist not in database - returning empty data');
+          setData([]);
+          return;
+        }
+        
+        if (!isAdmin && artistId) {
           const { data: contributions } = await supabase
             .from('track_contributors')
             .select('track_id')
             .eq('artist_id', artistId);
           trackIds = contributions?.map(c => c.track_id) || [];
+          
+          // Artist has no tracks - return empty
+          if (trackIds.length === 0) {
+            console.warn('⚠️ Artist has no tracks');
+            setData([]);
+            return;
+          }
         }
 
         // First get existing track IDs from mvp_content
@@ -215,7 +232,7 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
             return;
           }
           query = query.in('track_id', validTrackIds);
-        } else {
+        } else if (isAdmin) {
           // Admin view: filter by all existing tracks
           query = query.in('track_id', Array.from(existingTrackIds));
         }
@@ -283,12 +300,12 @@ export const useTopTracks = (artistName, isAdmin, dateRange = 30, limit = 10, re
     };
 
     fetchTopTracks();
-  }, [artistName, isAdmin, dateRange, limit, refreshKey]);
+  }, [artistId, isAdmin, dateRange, limit, refreshKey]);
 
   return { data, loading, error };
 };
 
-export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
+export const useStreamTimeline = (artistId, isAdmin, dateRange = 30) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -302,25 +319,27 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
-        // Get artist_id if filtering by artist
-        let artistId = null;
-        if (!isAdmin && artistName) {
-          const { data: artistData } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artistName)
-            .single();
-          artistId = artistData?.id;
+        // CRITICAL: If artist mode but no artistId, return EMPTY data
+        if (!isAdmin && !artistId) {
+          console.error('❌ useStreamTimeline: Artist not in database - returning empty data');
+          setData([]);
+          return;
         }
 
         // Get track IDs for this artist
         let trackIds = null;
-        if (artistId) {
+        if (!isAdmin && artistId) {
           const { data: contributions } = await supabase
             .from('track_contributors')
             .select('track_id')
             .eq('artist_id', artistId);
           trackIds = contributions?.map(c => c.track_id) || [];
+          
+          if (trackIds.length === 0) {
+            console.warn('⚠️ useStreamTimeline: Artist has no tracks');
+            setData([]);
+            return;
+          }
         }
 
         // First get existing track IDs from mvp_content
@@ -397,12 +416,12 @@ export const useStreamTimeline = (artistName, isAdmin, dateRange = 30) => {
     };
 
     fetchTimeline();
-  }, [artistName, isAdmin, dateRange]);
+  }, [artistId, isAdmin, dateRange]);
 
   return { data, loading, error };
 };
 
-export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
+export const useDemographics = (artistId, isAdmin, dateRange = 30) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -416,25 +435,27 @@ export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
-        // Get artist_id if filtering by artist
-        let artistId = null;
-        if (!isAdmin && artistName) {
-          const { data: artistData } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artistName)
-            .single();
-          artistId = artistData?.id;
+        // CRITICAL: If artist mode but no artistId, return EMPTY data
+        if (!isAdmin && !artistId) {
+          console.error('❌ useDemographics: Artist not in database - returning empty data');
+          setData({ gender: [], ageRange: [] });
+          return;
         }
 
         // Get track IDs for this artist
         let trackIds = null;
-        if (artistId) {
+        if (!isAdmin && artistId) {
           const { data: contributions } = await supabase
             .from('track_contributors')
             .select('track_id')
             .eq('artist_id', artistId);
           trackIds = contributions?.map(c => c.track_id) || [];
+          
+          if (trackIds.length === 0) {
+            console.warn('⚠️ useDemographics: Artist has no tracks');
+            setData({ gender: [], ageRange: [] });
+            return;
+          }
         }
 
         // First get existing track IDs from mvp_content
@@ -535,12 +556,12 @@ export const useDemographics = (artistName, isAdmin, dateRange = 30) => {
     };
 
     fetchDemographics();
-  }, [artistName, isAdmin, dateRange]);
+  }, [artistId, isAdmin, dateRange]);
 
   return { data, loading, error };
 };
 
-export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
+export const useGeographic = (artistId, isAdmin, dateRange = 30) => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -554,20 +575,31 @@ export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
-        // Get artist_id if filtering by artist
-        let artistId = null;
-        if (!isAdmin && artistName) {
-          const { data: artistData } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artistName)
-            .single();
-          artistId = artistData?.id;
+        // CRITICAL: If artist mode but no artistId, return EMPTY data
+        if (!isAdmin && !artistId) {
+          console.error('❌ useGeographic: Artist not in database - returning empty data');
+          setData([]);
+          return;
         }
 
         // Get track IDs for this artist
         let trackIds = null;
-        if (artistId) {
+        if (!isAdmin && artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+          
+          if (trackIds.length === 0) {
+            console.warn('⚠️ useGeographic: Artist has no tracks');
+            setData([]);
+            return;
+          }
+        }
+
+        // Get track IDs for this artist (continued)
+        if (!isAdmin && artistId) {
           const { data: contributions } = await supabase
             .from('track_contributors')
             .select('track_id')
@@ -671,12 +703,12 @@ export const useGeographic = (artistName, isAdmin, dateRange = 30) => {
     };
 
     fetchGeographic();
-  }, [artistName, isAdmin, dateRange]);
+  }, [artistId, isAdmin, dateRange]);
 
   return { data, loading, error };
 };
 
-export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
+export const useEarnings = (artistId, isAdmin, dateRange = 30) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -690,21 +722,48 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - dateRange);
 
-        // Get artist_id if filtering by artist
-        let artistId = null;
-        if (!isAdmin && artistName) {
-          const { data: artistData } = await supabase
-            .from('artists')
-            .select('id')
-            .eq('name', artistName)
-            .single();
-          artistId = artistData?.id;
+        // CRITICAL: If artist mode but no artistId, return EMPTY data
+        if (!isAdmin && !artistId) {
+          console.error('❌ useEarnings: Artist not in database - returning empty data');
+          setData({
+            totalRevenue: '0.000000',
+            artistShare: '0.000000',
+            platformFee: '0.000000',
+            myTotalEarnings: '0.000000',
+            byTrack: []
+          });
+          return;
         }
 
         // Get track IDs and splits for this artist
         let trackIds = null;
         let splitsByTrack = {};
-        if (artistId) {
+        if (!isAdmin && artistId) {
+          const { data: contributions } = await supabase
+            .from('track_contributors')
+            .select('track_id, split_percentage')
+            .eq('artist_id', artistId);
+          trackIds = contributions?.map(c => c.track_id) || [];
+          splitsByTrack = contributions?.reduce((acc, c) => {
+            acc[c.track_id] = c.split_percentage;
+            return acc;
+          }, {}) || {};
+          
+          if (trackIds.length === 0) {
+            console.warn('⚠️ useEarnings: Artist has no tracks');
+            setData({
+              totalRevenue: '0.000000',
+              artistShare: '0.000000',
+              platformFee: '0.000000',
+              myTotalEarnings: '0.000000',
+              byTrack: []
+            });
+            return;
+          }
+        }
+
+        // Continue with existing logic
+        if (!isAdmin && artistId) {
           const { data: contributions } = await supabase
             .from('track_contributors')
             .select('track_id, split_percentage')
@@ -861,7 +920,7 @@ export const useEarnings = (artistName, isAdmin, dateRange = 30) => {
     };
 
     fetchEarnings();
-  }, [artistName, isAdmin, dateRange]);
+  }, [artistId, isAdmin, dateRange]);
 
   return { data, loading, error };
 };
@@ -949,7 +1008,7 @@ export const usePlatformStats = () => {
 };
 
 
-export const useArtistUploadStats = (artistName) => {
+export const useArtistUploadStats = (artistId) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -960,14 +1019,10 @@ export const useArtistUploadStats = (artistName) => {
         setLoading(true);
         setError(null);
 
-        // Get artist_id first
-        const { data: artistData, error: artistError } = await supabase
-          .from('artists')
-          .select('id')
-          .eq('name', artistName)
-          .single();
-
-        if (artistError) throw artistError;
+        if (!artistId) {
+          setData(null);
+          return;
+        }
 
         // Get all contributions
         const { data: contributions, error: contribError } = await supabase
@@ -979,7 +1034,7 @@ export const useArtistUploadStats = (artistName) => {
               is_ad
             )
           `)
-          .eq('artist_id', artistData.id);
+          .eq('artist_id', artistId);
 
         if (contribError) throw contribError;
 
@@ -1004,10 +1059,8 @@ export const useArtistUploadStats = (artistName) => {
       }
     };
 
-    if (artistName) {
-      fetchUploadStats();
-    }
-  }, [artistName]);
+    fetchUploadStats();
+  }, [artistId]);
 
   return { data, loading, error };
 };

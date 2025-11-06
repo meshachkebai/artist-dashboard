@@ -6,10 +6,10 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import './EarningsPage.css';
 
-const EarningsPage = ({ artistName, isAdmin }) => {
+const EarningsPage = ({ artistName, artistId, isAdmin }) => {
   const [dateRange, setDateRange] = useState(30);
-  const { data: earnings, loading } = useEarnings(artistName, isAdmin, dateRange);
-  const { data: earningsByRole, loading: roleLoading } = useEarningsByRole(!isAdmin ? artistName : null, dateRange);
+  const { data: earnings, loading } = useEarnings(artistId, isAdmin, dateRange);
+  const { data: earningsByRole, loading: roleLoading } = useEarningsByRole(!isAdmin ? artistId : null, dateRange);
 
   return (
     <div className="earnings-page">
@@ -222,8 +222,8 @@ const EarningsPage = ({ artistName, isAdmin }) => {
         </p>
         <p>
           {isAdmin
-            ? 'Artist payments are processed monthly once they reach the minimum payout threshold of K50.'
-            : 'Payments are processed monthly once you reach the minimum payout threshold of K50.'
+            ? 'Artist payments are processed monthly once they reach the minimum payout threshold of TBC.'
+            : 'Payments are processed monthly once you reach the minimum payout threshold of TBC.'
           }
         </p>
         <p className="earnings-disclaimer">

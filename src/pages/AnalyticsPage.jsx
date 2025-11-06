@@ -5,10 +5,10 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import './AnalyticsPage.css';
 
-const AnalyticsPage = ({ artistName, isAdmin }) => {
+const AnalyticsPage = ({ artistName, artistId, isAdmin }) => {
   const [dateRange, setDateRange] = useState(30);
-  const { data: timeline, loading: timelineLoading } = useStreamTimeline(artistName, isAdmin, dateRange);
-  const { data: topTracks, loading: tracksLoading } = useTopTracks(artistName, isAdmin, dateRange, 10);
+  const { data: timeline, loading: timelineLoading } = useStreamTimeline(artistId, isAdmin, dateRange);
+  const { data: topTracks, loading: tracksLoading } = useTopTracks(artistId, isAdmin, dateRange, 10);
 
   return (
     <div className="analytics-page">

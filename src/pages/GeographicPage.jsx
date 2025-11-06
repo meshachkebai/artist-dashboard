@@ -4,9 +4,9 @@ import LoadingSpinner from '../components/shared/LoadingSpinner';
 import EmptyState from '../components/shared/EmptyState';
 import './GeographicPage.css';
 
-const GeographicPage = ({ artistName, isAdmin }) => {
+const GeographicPage = ({ artistName, artistId, isAdmin }) => {
   const [dateRange, setDateRange] = useState(30);
-  const { data: locations, loading } = useGeographic(artistName, isAdmin, dateRange);
+  const { data: locations, loading } = useGeographic(artistId, isAdmin, dateRange);
 
   return (
     <div className="geographic-page">

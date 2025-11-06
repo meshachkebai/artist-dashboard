@@ -7,9 +7,9 @@ import './AudiencePage.css';
 
 const COLORS = ['#A14189', '#D4669A', '#E88BAB', '#F5B0BC', '#FFD5CD'];
 
-const AudiencePage = ({ artistName, isAdmin }) => {
+const AudiencePage = ({ artistName, artistId, isAdmin }) => {
     const [dateRange, setDateRange] = useState(30);
-    const { data: demographics, loading } = useDemographics(artistName, isAdmin, dateRange);
+    const { data: demographics, loading } = useDemographics(artistId, isAdmin, dateRange);
 
     const hasData = demographics && (demographics.gender.length > 0 || demographics.ageRange.length > 0);
 

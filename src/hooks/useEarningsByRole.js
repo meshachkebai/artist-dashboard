@@ -27,7 +27,7 @@ const isAdEvent = (event, adTrackIds, adTrackTitles) => {
   return adTrackIds.has(event.track_id) || adTrackTitles.has(event.track_title);
 };
 
-export const useEarningsByRole = (artistName, dateRange = 30) => {
+export const useEarningsByRole = (artistId, dateRange = 30) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -38,34 +38,27 @@ export const useEarningsByRole = (artistName, dateRange = 30) => {
         setLoading(true);
         setError(null);
 
-        if (!artistName) {
-          setData(null);
+        // CRITICAL: If no artistId, return EMPTY data
+        if (!artistId) {
+          console.error('❌ useEarningsByRole: Artist not in database - returning empty data');
+          setData({ byRole: [], total: '0.000000' });
           return;
-        }
-
-        // Get artist_id
-        const { data: artistData, error: artistError } = await supabase
-          .from('artists')
-          .select('id')
-          .eq('name', artistName)
-          .single();
-
-        if (artistError || !artistData) {
-          throw new Error('Artist not found');
         }
 
         // Get all contributions with splits
         const { data: contributions, error: contribError } = await supabase
           .from('track_contributors')
           .select('track_id, role, split_percentage')
-          .eq('artist_id', artistData.id);
-
+          .eq('artist_id', artistId);
+        
         if (contribError) throw contribError;
-
+        
         const trackIds = contributions?.map(c => c.track_id) || [];
 
+        // If artist has no contributions, return empty
         if (trackIds.length === 0) {
-          setData({ byRole: [], total: 0 });
+          console.warn('⚠️ useEarningsByRole: Artist has no tracks');
+          setData({ byRole: [], total: '0.000000' });
           return;
         }
 
@@ -168,7 +161,7 @@ export const useEarningsByRole = (artistName, dateRange = 30) => {
     };
 
     fetchEarningsByRole();
-  }, [artistName, dateRange]);
+  }, [artistId, dateRange]);
 
   return { data, loading, error };
 };
