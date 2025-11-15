@@ -1,5 +1,6 @@
 import React from 'react';
-import { useOverviewStats, useTopTracks, useArtistUploadStats } from '../hooks/useAnalytics';
+import { useTopTracks, useArtistUploadStats } from '../hooks/useAnalytics';
+import { useUnifiedAnalytics } from '../hooks/useUnifiedAnalytics';
 import StatCard from '../components/shared/StatCard';
 import EmptyState from '../components/shared/EmptyState';
 import { createClient } from '@supabase/supabase-js';
@@ -19,7 +20,7 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [trackLimit, setTrackLimit] = React.useState(10);
   const [exporting, setExporting] = React.useState(false);
-  const { data: stats, loading: statsLoading } = useOverviewStats(artistId, isAdmin, 30, refreshKey);
+  const { data: stats, loading: statsLoading } = useUnifiedAnalytics(artistId, isAdmin, 30);
   const { data: topTracks, loading: tracksLoading } = useTopTracks(artistId, isAdmin, 30, trackLimit, refreshKey);
   const { data: uploadStats, loading: uploadStatsLoading } = useArtistUploadStats(!isAdmin ? artistId : null);
 
@@ -139,9 +140,7 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
           'Genre',
           'Duration (seconds)',
           'Upload Date',
-          'Total Plays',
           'Qualified Streams',
-          'Completion Rate (%)',
           'Unique Listeners',
           'Top City',
           'Top City Streams',
@@ -170,7 +169,6 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
 
         tracks.forEach(track => {
           const stats = statsByTrack[track.id] || { plays: 0, streams: 0, uniqueListeners: new Set(), cities: {} };
-          const completionRate = stats.plays > 0 ? Math.round((stats.streams / stats.plays) * 100) : 0;
           const topCity = Object.entries(stats.cities).sort((a, b) => b[1] - a[1])[0];
           
           // Full precision earnings - no rounding
@@ -186,9 +184,7 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
             `"${track.genre || ''}"`,
             track.duration_seconds,
             new Date(track.created_at).toLocaleDateString(),
-            stats.plays,
             stats.streams,
-            completionRate,
             stats.uniqueListeners.size,
             topCity ? `"${topCity[0]}"` : '',
             topCity ? topCity[1] : 0,
@@ -229,9 +225,7 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
           'Genre',
           'Duration (seconds)',
           'Upload Date',
-          'Total Plays',
           'Qualified Streams',
-          'Completion Rate (%)',
           'Unique Listeners',
           'Top City',
           'Top City Streams',
@@ -244,7 +238,6 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
 
         tracks.forEach(track => {
           const stats = statsByTrack[track.id] || { plays: 0, streams: 0, uniqueListeners: new Set(), cities: {} };
-          const completionRate = stats.plays > 0 ? Math.round((stats.streams / stats.plays) * 100) : 0;
           const topCity = Object.entries(stats.cities).sort((a, b) => b[1] - a[1])[0];
           
           // Full precision earnings - no rounding
@@ -271,9 +264,7 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
             `"${track.genre || ''}"`,
             track.duration_seconds,
             new Date(track.created_at).toLocaleDateString(),
-            stats.plays,
             stats.streams,
-            completionRate,
             stats.uniqueListeners.size,
             topCity ? `"${topCity[0]}"` : '',
             topCity ? topCity[1] : 0,
@@ -346,13 +337,13 @@ const OverviewPage = ({ artistName, artistId, isAdmin }) => {
         />
         <StatCard
           label={isAdmin ? 'Active Tracks' : 'Total Tracks'}
-          value={stats?.totalTracks || 0}
+          value={stats?.uniqueTracks || 0}
           change="Last 30 days"
           loading={statsLoading}
         />
         <StatCard
-          label={isAdmin ? 'Estimated Earnings' : 'Your Earnings'}
-          value={`K${stats?.estimatedRevenue || '0.00'}`}
+          label={isAdmin ? 'Total Platform Revenue' : 'Your Earnings'}
+          value={`K${stats?.totalRevenue?.toFixed(6) || '0.000000'}`}
           change="Last 30 days"
           loading={statsLoading}
         />

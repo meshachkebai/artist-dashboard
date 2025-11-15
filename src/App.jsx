@@ -19,6 +19,7 @@ import { uploadToR2 } from './services/r2Upload'
 import { ContributorList } from './components/shared/ContributorList'
 import './components/shared/ContributorBadge.css'
 import MyCreditsPage from './pages/MyCreditsPage'
+import { MetadataAnalysisProgress } from './components/shared/MetadataAnalysisProgress'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -78,6 +79,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
   const [isDetectingMetadata, setIsDetectingMetadata] = useState(false);
   const [metadataError, setMetadataError] = useState(null);
   const [originalMetadata, setOriginalMetadata] = useState(null);
+  const [metadataProgress, setMetadataProgress] = useState({ stage: 'reading', progress: 0 });
 
   // Duration detection state (keeping for backward compatibility)
   const [detectedDuration, setDetectedDuration] = useState(0);
@@ -221,63 +223,6 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         .in('track_id', trackIds)
         .order('role');
 
-      // Get analytics for all tracks
-      const { data: allEvents, error: eventsError } = await supabase
-        .from('analytics_events')
-        .select('track_id, event_type, duration_seconds, access_code_id, timestamp')
-        .in('track_id', trackIds);
-
-      console.log('App.jsx - Track IDs:', trackIds);
-      console.log('App.jsx - Analytics Events:', allEvents);
-      console.log('App.jsx - Events Error:', eventsError);
-
-      if (eventsError) {
-        console.error('Failed to load analytics:', eventsError);
-      }
-
-      // Get user profiles for location data
-      const accessCodeIds = [...new Set((allEvents || []).map(e => e.access_code_id).filter(Boolean))];
-      const { data: profiles } = await supabase
-        .from('user_profiles')
-        .select('access_code_id, city')
-        .in('access_code_id', accessCodeIds);
-
-      // Create lookup map for cities
-      const cityByAccessCode = (profiles || []).reduce((acc, p) => {
-        acc[p.access_code_id] = p.city;
-        return acc;
-      }, {});
-
-      // Calculate stats and hotspots per track
-      const statsByTrack = (allEvents || []).reduce((acc, event) => {
-        if (!acc[event.track_id]) {
-          acc[event.track_id] = {
-            totalPlays: 0,
-            qualifiedStreams: 0,
-            cityCounts: {}
-          };
-        }
-
-        // Count play_start events for total plays
-        if (event.event_type === 'play_start') {
-          acc[event.track_id].totalPlays++;
-        }
-
-        // Count qualified streams (play_end with 30+ seconds)
-        if (event.event_type === 'play_end' && event.duration_seconds >= 30) {
-          acc[event.track_id].qualifiedStreams++;
-
-          // Track city for qualified streams
-          const city = cityByAccessCode[event.access_code_id];
-          if (city) {
-            acc[event.track_id].cityCounts[city] =
-              (acc[event.track_id].cityCounts[city] || 0) + 1;
-          }
-        }
-
-        return acc;
-      }, {});
-
       // Group contributors by track
       const contributorsByTrack = (contributors || []).reduce((acc, c) => {
         if (!acc[c.track_id]) acc[c.track_id] = [];
@@ -285,22 +230,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         return acc;
       }, {});
 
-      // Add contributors, stats, and convert duration
+      // Add contributors and convert duration
       const transformedTracks = data.map(track => {
-        const stats = statsByTrack[track.id] || { totalPlays: 0, qualifiedStreams: 0, cityCounts: {} };
-        const completionRate = stats.totalPlays > 0
-          ? Math.round((stats.qualifiedStreams / stats.totalPlays) * 100)
-          : 0;
-
-        // Get top 3 cities sorted by stream count
-        const topCities = Object.entries(stats.cityCounts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .map(([city, count]) => ({ city, streams: count }));
-
-        const hotspotCity = topCities[0]?.city || null;
-        const hotspotStreams = topCities[0]?.streams || 0;
-
         // Check if current user is primary artist on this track
         const trackContributors = contributorsByTrack[track.id] || [];
         const myContribution = trackContributors.find(c => c.artists.name === artistName);
@@ -313,15 +244,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
           contributors: trackContributors,
           isPrimaryArtist,
           myRole: myContribution?.role || null,
-          mySplit,
-          analytics: {
-            totalPlays: stats.totalPlays,
-            qualifiedStreams: stats.qualifiedStreams,
-            completionRate,
-            hotspotCity,
-            hotspotStreams,
-            topCities
-          }
+          mySplit
         };
       });
 
@@ -388,13 +311,15 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     if (file && name === 'file' && file.type.startsWith('audio/')) {
       setIsDetectingMetadata(true);
       setMetadataError(null);
-
+      setMetadataProgress({ stage: 'reading', progress: 0 });
 
       try {
         console.log('🎵 Extracting comprehensive metadata from:', file.name);
 
-        // Extract comprehensive metadata
-        const metadata = await getComprehensiveMetadata(file);
+        // Extract comprehensive metadata with progress callback
+        const metadata = await getComprehensiveMetadata(file, (stage, progress) => {
+          setMetadataProgress({ stage, progress });
+        });
 
         if (metadata) {
           // Use the comprehensive metadata detector to create form data
@@ -577,9 +502,9 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
         : uploadForm.genre;
 
       // Build artist_credits JSON object
-      let artistCredits = null;
+      let artistCredits = {};
 
-      // Only create artist_credits if there are additional artists beyond the primary
+      // Check if there are additional artists beyond the primary
       const hasAdditionalHeadliners = uploadForm.allowMultipleHeadliners &&
         uploadForm.headliners.some(h => h.trim() !== '');
       const hasFeaturing = uploadForm.hasFeaturing &&
@@ -587,13 +512,15 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       const hasContributing = uploadForm.hasContributing &&
         uploadForm.contributing.some(c => c.name.trim() !== '');
 
-      if (hasAdditionalHeadliners || hasFeaturing || hasContributing) {
-        artistCredits = {};
-
-        // Add primary artist split
+      // If no contributors, automatically set primary artist to 100%
+      if (!hasAdditionalHeadliners && !hasFeaturing && !hasContributing) {
+        artistCredits.primary_split = 100;
+      } else {
+        // Add primary artist split (from form)
         if (uploadForm.primarySplit) {
           artistCredits.primary_split = parseFloat(uploadForm.primarySplit);
         }
+      }
 
         // Add headliners (additional artists beyond primary)
         if (hasAdditionalHeadliners) {
@@ -617,17 +544,16 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             }));
         }
 
-        // Add contributing artists with roles and splits
-        if (hasContributing) {
-          artistCredits.contributing = uploadForm.contributing
-            .filter(c => c.name.trim() !== '')
-            .map((c, index) => ({
-              name: c.name.trim(),
-              role: c.role === 'other' ? c.customRole.trim() : c.role,
-              split: uploadForm.contributingSplits?.[index] ? parseFloat(uploadForm.contributingSplits[index]) : null,
-              id: c.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
-            }));
-        }
+      // Add contributing artists with roles and splits
+      if (hasContributing) {
+        artistCredits.contributing = uploadForm.contributing
+          .filter(c => c.name.trim() !== '')
+          .map((c, index) => ({
+            name: c.name.trim(),
+            role: c.role === 'other' ? c.customRole.trim() : c.role,
+            split: uploadForm.contributingSplits?.[index] ? parseFloat(uploadForm.contributingSplits[index]) : null,
+            id: c.name.toLowerCase().replace(/[^a-z0-9]/g, '-')
+          }));
       }
 
       console.log('Artist credits to save:', artistCredits);
@@ -692,7 +618,10 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             has_explicit_language: uploadForm.has_explicit_language,
             has_adult_themes: uploadForm.has_adult_themes,
             source_url: uploadForm.source_url || null,
-            license_url: uploadForm.license_url || null
+            license_url: uploadForm.license_url || null,
+            loudness_lufs: detectedMetadata?.loudness?.lufs || null,
+            true_peak_db: detectedMetadata?.loudness?.truePeak || null,
+            normalization_gain: detectedMetadata?.loudness?.normalizationGain || null
           })
           .select()
           .single();
@@ -900,7 +829,9 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const metadata = await getComprehensiveMetadata(file);
+        const metadata = await getComprehensiveMetadata(file, (stage, progress) => {
+          console.log(`File ${i + 1}/${files.length}: ${stage} - ${progress}%`);
+        });
         const { createFormDataFromMetadata } = await import('./utils/metadataDetector');
         const formData = createFormDataFromMetadata(metadata);
 
@@ -914,7 +845,8 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
           featuring: [''],
           has_explicit_language: false,
           has_adult_themes: false,
-          metadata: formData.technical
+          metadata: formData.technical,
+          loudness: metadata.loudness
         });
       } catch (error) {
         console.error(`Failed to process ${file.name}:`, error);
@@ -1020,7 +952,10 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             artist_credits: artistCredits,
             has_explicit_language: track.has_explicit_language,
             has_adult_themes: track.has_adult_themes,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            loudness_lufs: track.loudness?.lufs || null,
+            true_peak_db: track.loudness?.truePeak || null,
+            normalization_gain: track.loudness?.normalizationGain || null
           });
 
         if (error) throw error;
@@ -2098,22 +2033,11 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
 
                 {/* Metadata detection status */}
                 {isDetectingMetadata && (
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    padding: '1.5rem',
-                    marginTop: '1rem'
-                  }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      border: '4px solid var(--border-color, #e0e0e0)',
-                      borderTop: '4px solid var(--brand-primary)',
-                      borderRadius: '50%',
-                      animation: 'spin 1s linear infinite'
-                    }} />
-                  </div>
+                  <MetadataAnalysisProgress 
+                    stage={metadataProgress.stage}
+                    progress={metadataProgress.progress}
+                    currentFile={uploadForm.file?.name}
+                  />
                 )}
 
                 {metadataError && (
@@ -2564,52 +2488,7 @@ ${results.failed.length > 0 ? `✗ Failed: ${results.failed.length} tracks` : ''
                     </p>
                   )}
 
-                  {track.analytics && (
-                    <div className="track-analytics" style={{
-                      color: 'var(--text-secondary, #666)',
-                      fontSize: '0.875rem',
-                      marginTop: '0.5rem',
-                      marginBottom: '0.75rem'
-                    }}>
-                      <p style={{ margin: '0 0 0.25rem 0' }}>
-                        {track.analytics.totalPlays.toLocaleString()} plays • {track.analytics.qualifiedStreams.toLocaleString()} streams ({track.analytics.completionRate}%)
-                        {!isAdmin && track.mySplit && (
-                          <span style={{
-                            marginLeft: '0.5rem',
-                            color: 'var(--success, #28a745)',
-                            fontWeight: '600'
-                          }}>
-                            • Your Split: {track.mySplit}% • Earnings: K{((track.analytics.qualifiedStreams * 0.001 * 0.70 * track.mySplit) / 100).toFixed(6)}
-                          </span>
-                        )}
-                      </p>
-                      {track.analytics.hotspotCity && (
-                        <p
-                          style={{
-                            margin: 0,
-                            fontWeight: '500',
-                            color: 'var(--brand-primary, #A14189)',
-                            cursor: track.analytics.topCities.length > 1 ? 'pointer' : 'default'
-                          }}
-                          title={track.analytics.topCities.length > 1
-                            ? track.analytics.topCities.map(c => `${c.city}: ${c.streams} streams`).join('\n')
-                            : ''
-                          }
-                        >
-                          Blowing up in: {track.analytics.hotspotCity} ({track.analytics.hotspotStreams.toLocaleString()} streams)
-                          {track.analytics.topCities.length > 1 && (
-                            <span style={{
-                              marginLeft: '0.25rem',
-                              fontSize: '0.75rem',
-                              opacity: 0.7
-                            }}>
-                              +{track.analytics.topCities.length - 1} more
-                            </span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {/* Analytics removed - view in Overview/Analytics pages */}
 
                   {/* Only show edit/delete for primary artists or admins */}
                   {(isAdmin || track.isPrimaryArtist) && (

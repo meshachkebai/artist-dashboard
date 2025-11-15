@@ -10,6 +10,7 @@ const Sidebar = ({ isAdmin, isOpen, onClose }) => {
     { path: '/dashboard/audience', label: 'Audience', adminOnly: false },
     { path: '/dashboard/geographic', label: 'Geographic', adminOnly: false },
     { path: '/dashboard/earnings', label: 'Earnings', adminOnly: false },
+    { path: '/dashboard/payments', label: 'Payments', adminOnly: true },
     { path: '/dashboard/platform', label: 'Platform Stats', adminOnly: true },
   ];
 

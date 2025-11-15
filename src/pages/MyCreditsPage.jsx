@@ -103,11 +103,15 @@ const MyCreditsPage = ({ artistName }) => {
         return acc;
       }, {});
 
-      // Get analytics for tracks
+      // Get analytics for tracks (last 30 days to match Overview page)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
       const { data: allEvents, error: eventsError } = await supabase
         .from('analytics_events')
         .select('track_id, event_type, duration_seconds')
-        .in('track_id', trackIds);
+        .in('track_id', trackIds)
+        .gte('timestamp', thirtyDaysAgo.toISOString());
 
       console.log('Track IDs:', trackIds);
       console.log('Analytics Events:', allEvents);
@@ -116,11 +120,7 @@ const MyCreditsPage = ({ artistName }) => {
       // Calculate stats per track
       const statsByTrack = (allEvents || []).reduce((acc, event) => {
         if (!acc[event.track_id]) {
-          acc[event.track_id] = { totalPlays: 0, qualifiedStreams: 0 };
-        }
-        
-        if (event.event_type === 'play_start') {
-          acc[event.track_id].totalPlays++;
+          acc[event.track_id] = { qualifiedStreams: 0 };
         }
         
         if (event.event_type === 'play_end' && event.duration_seconds >= 30) {
@@ -132,19 +132,14 @@ const MyCreditsPage = ({ artistName }) => {
 
       // Combine all data
       const enrichedTracks = tracksData.map(track => {
-        const stats = statsByTrack[track.id] || { totalPlays: 0, qualifiedStreams: 0 };
-        const completionRate = stats.totalPlays > 0 
-          ? Math.round((stats.qualifiedStreams / stats.totalPlays) * 100)
-          : 0;
+        const stats = statsByTrack[track.id] || { qualifiedStreams: 0 };
 
         return {
           ...track,
           duration: track.duration_seconds * 1000,
           contributors: contributorsByTrack[track.id] || [],
           analytics: {
-            totalPlays: stats.totalPlays,
-            qualifiedStreams: stats.qualifiedStreams,
-            completionRate
+            qualifiedStreams: stats.qualifiedStreams
           }
         };
       });
@@ -205,7 +200,7 @@ const MyCreditsPage = ({ artistName }) => {
                     fontSize: '0.875rem',
                     marginTop: '0.5rem'
                   }}>
-                    {track.analytics.totalPlays.toLocaleString()} plays • {track.analytics.qualifiedStreams.toLocaleString()} streams ({track.analytics.completionRate}%)
+                    {track.analytics.qualifiedStreams.toLocaleString()} streams
                     {myRole[track.id]?.split && (
                       <span style={{ 
                         marginLeft: '0.5rem',

@@ -1,0 +1,211 @@
+.payments-page {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.pending-payouts-section {
+  margin-top: 2rem;
+}
+
+.pending-payouts-section h2 {
+  margin-bottom: 1.5rem;
+  color: var(--text-primary);
+}
+
+.payouts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.payout-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 1.5rem;
+  gap: 2rem;
+}
+
+.payout-info h3 {
+  margin: 0 0 1rem 0;
+  color: var(--brand-accent);
+}
+
+.payout-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  align-items: center;
+}
+
+.payout-stats .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-height: 60px;
+  justify-content: center;
+}
+
+.payout-stats .stat.pending {
+  background: var(--brand-primary-light, #f0e6f6);
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: 2px solid var(--brand-primary, #A14189);
+}
+
+.payout-stats .stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.payout-stats .stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.payout-stats .stat.pending .stat-label {
+  color: var(--brand-primary, #A14189);
+}
+
+.payout-stats .stat.pending .stat-value {
+  color: var(--brand-primary, #A14189);
+  font-size: 1.125rem;
+}
+
+.payout-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-self: center;
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background: var(--bg-primary, #fff);
+  border-radius: 12px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.modal-close:hover {
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.payment-form {
+  padding: 1.5rem;
+}
+
+.payment-form .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.payment-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.payment-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.payment-form input,
+.payment-form select,
+.payment-form textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  font-size: 1rem;
+  color: var(--text-primary);
+  background: var(--bg-primary, #fff);
+}
+
+.payment-form input:focus,
+.payment-form select:focus,
+.payment-form textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.payment-form textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+@media (max-width: 768px) {
+  .payout-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .payout-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .payment-form .form-row {
+    grid-template-columns: 1fr;
+  }
+}

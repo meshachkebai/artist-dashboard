@@ -2,6 +2,7 @@
  * Comprehensive Audio Metadata Detection Utility
  * Uses music-metadata library for detailed audio file analysis
  * Includes automatic BPM detection via audio analysis
+ * Includes LUFS loudness normalization (EBU R128 standard)
  */
 
 import { parseBlob } from 'music-metadata';
@@ -10,62 +11,243 @@ import MusicTempo from 'music-tempo';
 /**
  * Detects BPM from audio file using audio analysis
  * @param {File} audioFile - The audio file to analyze
+ * @param {Function} onProgress - Progress callback (optional)
  * @returns {Promise<number|null>} Detected BPM or null if detection fails
  */
-const detectBPMFromAudio = async (audioFile) => {
+const detectBPMFromAudio = async (audioFile, onProgress = null) => {
   try {
     console.log('🎼 Analyzing audio for BPM detection...');
+    if (onProgress) onProgress('bpm', 0);
 
     // Create audio context
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
     // Read file as array buffer
     const arrayBuffer = await audioFile.arrayBuffer();
+    if (onProgress) onProgress('bpm', 30);
 
     // Decode audio data
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    if (onProgress) onProgress('bpm', 60);
 
     // Get audio data from first channel
     const audioData = audioBuffer.getChannelData(0);
 
     // Analyze tempo
     const musicTempo = new MusicTempo(audioData);
+    if (onProgress) onProgress('bpm', 90);
 
     // Close audio context to free resources
     audioContext.close();
 
     const bpm = Math.round(musicTempo.tempo);
     console.log(`✅ BPM detected: ${bpm}`);
+    if (onProgress) onProgress('bpm', 100);
 
     return bpm > 0 ? bpm : null;
 
   } catch (error) {
     console.warn('⚠️ BPM detection failed:', error.message);
+    if (onProgress) onProgress('bpm', 100);
     return null;
+  }
+};
+
+/**
+ * Calculates RMS (Root Mean Square) loudness for audio buffer
+ * Simplified LUFS-like measurement for browser-based analysis
+ * @param {AudioBuffer} audioBuffer - Decoded audio buffer
+ * @returns {number} RMS loudness in dB
+ */
+const calculateRMSLoudness = (audioBuffer) => {
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  let sumSquares = 0;
+  let sampleCount = 0;
+
+  // Process all channels
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    const channelData = audioBuffer.getChannelData(channel);
+    
+    for (let i = 0; i < channelData.length; i++) {
+      sumSquares += channelData[i] * channelData[i];
+      sampleCount++;
+    }
+  }
+
+  // Calculate RMS
+  const rms = Math.sqrt(sumSquares / sampleCount);
+  
+  // Convert to dB (LUFS-like scale)
+  // Reference: -23 LUFS is approximately 0.1 RMS
+  const db = 20 * Math.log10(rms) - 0.691;
+  
+  return db;
+};
+
+/**
+ * Finds true peak value in audio buffer
+ * @param {AudioBuffer} audioBuffer - Decoded audio buffer
+ * @returns {number} True peak in dBTP
+ */
+const calculateTruePeak = (audioBuffer) => {
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  let maxPeak = 0;
+
+  // Find maximum absolute sample value across all channels
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    const channelData = audioBuffer.getChannelData(channel);
+    
+    for (let i = 0; i < channelData.length; i++) {
+      const absSample = Math.abs(channelData[i]);
+      if (absSample > maxPeak) {
+        maxPeak = absSample;
+      }
+    }
+  }
+
+  // Convert to dBTP
+  const dbtp = 20 * Math.log10(maxPeak);
+  
+  return dbtp;
+};
+
+/**
+ * Calculates loudness range (simplified)
+ * @param {AudioBuffer} audioBuffer - Decoded audio buffer
+ * @returns {number} Loudness range in LU
+ */
+const calculateLoudnessRange = (audioBuffer) => {
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  const blockSize = Math.floor(audioBuffer.sampleRate * 0.4); // 400ms blocks
+  const blocks = [];
+
+  // Calculate loudness for each block
+  for (let channel = 0; channel < numberOfChannels; channel++) {
+    const channelData = audioBuffer.getChannelData(channel);
+    
+    for (let i = 0; i < channelData.length; i += blockSize) {
+      const blockEnd = Math.min(i + blockSize, channelData.length);
+      let sumSquares = 0;
+      
+      for (let j = i; j < blockEnd; j++) {
+        sumSquares += channelData[j] * channelData[j];
+      }
+      
+      const rms = Math.sqrt(sumSquares / (blockEnd - i));
+      const db = 20 * Math.log10(rms) - 0.691;
+      blocks.push(db);
+    }
+  }
+
+  // Sort blocks and calculate range between 10th and 95th percentile
+  blocks.sort((a, b) => a - b);
+  const p10 = blocks[Math.floor(blocks.length * 0.1)];
+  const p95 = blocks[Math.floor(blocks.length * 0.95)];
+  
+  return p95 - p10;
+};
+
+/**
+ * Analyzes loudness using simplified LUFS-like calculation
+ * Note: This is a browser-based approximation, not full ITU-R BS.1770-4 compliance
+ * @param {File} audioFile - The audio file to analyze
+ * @param {Function} onProgress - Progress callback (optional)
+ * @returns {Promise<Object>} Loudness data { lufs, truePeak, gain }
+ */
+const analyzeLoudness = async (audioFile, onProgress = null) => {
+  try {
+    console.log('🔊 Analyzing loudness (simplified LUFS)...');
+    if (onProgress) onProgress('loudness', 0);
+
+    // Create audio context
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Read file as array buffer
+    const arrayBuffer = await audioFile.arrayBuffer();
+    if (onProgress) onProgress('loudness', 30);
+
+    // Decode audio data
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    if (onProgress) onProgress('loudness', 50);
+
+    // Calculate RMS loudness (LUFS-like)
+    const integratedLoudness = calculateRMSLoudness(audioBuffer);
+    if (onProgress) onProgress('loudness', 70);
+
+    // Calculate true peak
+    const truePeak = calculateTruePeak(audioBuffer);
+    if (onProgress) onProgress('loudness', 85);
+
+    // Calculate loudness range
+    const loudnessRange = calculateLoudnessRange(audioBuffer);
+    if (onProgress) onProgress('loudness', 95);
+
+    // Close audio context
+    audioContext.close();
+
+    // Calculate normalization gain to reach -14 LUFS target
+    const targetLUFS = -14.0;
+    const normalizationGain = targetLUFS - integratedLoudness;
+
+    const loudnessData = {
+      lufs: parseFloat(integratedLoudness.toFixed(2)),
+      truePeak: parseFloat(truePeak.toFixed(2)),
+      gain: parseFloat(normalizationGain.toFixed(2)),
+      loudnessRange: parseFloat(loudnessRange.toFixed(2))
+    };
+
+    console.log(`✅ Loudness analyzed (simplified):`, {
+      LUFS: loudnessData.lufs,
+      'True Peak': loudnessData.truePeak,
+      'Normalization Gain': loudnessData.gain,
+      'Loudness Range': loudnessData.loudnessRange
+    });
+    
+    if (onProgress) onProgress('loudness', 100);
+
+    return loudnessData;
+
+  } catch (error) {
+    console.warn('⚠️ Loudness analysis failed:', error.message);
+    if (onProgress) onProgress('loudness', 100);
+    return {
+      lufs: null,
+      truePeak: null,
+      gain: null,
+      loudnessRange: null
+    };
   }
 };
 
 /**
  * Extracts comprehensive metadata from audio file
  * @param {File} audioFile - The audio file to analyze
+ * @param {Function} onProgress - Progress callback (stage, progress)
  * @returns {Promise<Object>} Complete metadata object
  */
-export const getComprehensiveMetadata = async (audioFile) => {
+export const getComprehensiveMetadata = async (audioFile, onProgress = null) => {
   try {
     console.log('🎵 Extracting metadata from:', audioFile.name);
+    if (onProgress) onProgress('reading', 0);
 
     // Parse audio file metadata
+    if (onProgress) onProgress('metadata', 0);
     const metadata = await parseBlob(audioFile);
+    if (onProgress) onProgress('metadata', 100);
 
     // Extract BPM from metadata tags first
     let bpm = metadata.common?.bpm || null;
 
     // If no BPM in metadata, detect it from audio
     if (!bpm) {
-      bpm = await detectBPMFromAudio(audioFile);
+      bpm = await detectBPMFromAudio(audioFile, onProgress);
     } else {
       console.log(`✅ BPM from metadata: ${bpm}`);
+      if (onProgress) onProgress('bpm', 100);
     }
+
+    // Analyze loudness (LUFS)
+    const loudnessData = await analyzeLoudness(audioFile, onProgress);
 
     // Extract basic metadata
     const basicMetadata = {
@@ -103,6 +285,13 @@ export const getComprehensiveMetadata = async (audioFile) => {
       ...basicMetadata,
       ...technicalMetadata,
       ...fileInfo,
+      // Loudness normalization data
+      loudness: {
+        lufs: loudnessData.lufs,
+        truePeak: loudnessData.truePeak,
+        normalizationGain: loudnessData.gain,
+        loudnessRange: loudnessData.loudnessRange
+      },
       // Raw metadata for debugging
       raw: metadata
     };
@@ -113,8 +302,12 @@ export const getComprehensiveMetadata = async (audioFile) => {
       duration: Math.floor(completeMetadata.duration),
       bitrate: completeMetadata.bitrate,
       bpm: completeMetadata.bpm,
+      lufs: completeMetadata.loudness.lufs,
+      normalizationGain: completeMetadata.loudness.normalizationGain,
       fileSize: `${(completeMetadata.fileSize / 1024 / 1024).toFixed(2)}MB`
     });
+
+    if (onProgress) onProgress('complete', 100);
 
     return completeMetadata;
 

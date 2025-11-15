@@ -7,6 +7,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import AudiencePage from './pages/AudiencePage';
 import GeographicPage from './pages/GeographicPage';
 import EarningsPage from './pages/EarningsPage';
+import PaymentsPage from './pages/PaymentsPage';
 import App from './App.jsx';
 import { useAuth } from './hooks/useAuth';
 
@@ -31,7 +32,10 @@ const AppRouter = () => {
           <Route path="geographic" element={<GeographicPage artistName={artistName} artistId={artistId} isAdmin={isAdmin} />} />
           <Route path="earnings" element={<EarningsPage artistName={artistName} artistId={artistId} isAdmin={isAdmin} />} />
           {isAdmin && (
-            <Route path="platform" element={<PlatformStatsPage />} />
+            <>
+              <Route path="payments" element={<PaymentsPage />} />
+              <Route path="platform" element={<PlatformStatsPage />} />
+            </>
           )}
         </Route>
       </Routes>
