@@ -5,6 +5,7 @@ import './Sidebar.css';
 const Sidebar = ({ isAdmin, isOpen, onClose }) => {
   const navItems = [
     { path: '/dashboard', label: 'Overview', adminOnly: false },
+    { path: '/dashboard/profile', label: 'My Profile', adminOnly: false },
     { path: '/dashboard/tracks', label: isAdmin ? 'All Tracks' : 'My Tracks', adminOnly: false },
     { path: '/dashboard/analytics', label: 'Analytics', adminOnly: false },
     { path: '/dashboard/audience', label: 'Audience', adminOnly: false },

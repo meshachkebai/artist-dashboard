@@ -461,12 +461,33 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       let audioFileUrl = null;
       let artworkFileUrl = null;
 
+      // Fetch artist's content category
+      let contentCategory = 'music'; // Default
+      try {
+        const { data: artistData, error: artistError } = await supabase
+          .from('artist_access_codes')
+          .select('content_category')
+          .eq('artist_name', uploadForm.artist)
+          .single();
+
+        if (!artistError && artistData?.content_category) {
+          contentCategory = artistData.content_category;
+          console.log(`✅ Artist category: ${contentCategory}`);
+        } else {
+          console.log('⚠️ Artist category not found, defaulting to music');
+        }
+      } catch (error) {
+        console.error('Failed to fetch artist category:', error);
+        console.log('⚠️ Using default category: music');
+      }
+
       if (!editingTrack) {
         // New upload - must have audio file
         console.log('Uploading track to R2:', {
           title: uploadForm.title,
           artist: uploadForm.artist,
           genre: uploadForm.genre,
+          category: contentCategory,
           fileName: uploadForm.file.name
         });
 
@@ -608,6 +629,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             album: albumValidation.sanitized || null,
             year: yearValidation.sanitized || null,
             genre: genreValidation.sanitized || 'Unknown',
+            category: contentCategory, // Explicit category from artist
             file_path: audioFileUrl,
             artwork_path: artworkFileUrl,
             duration_seconds: uploadForm.duration_seconds ? parseInt(uploadForm.duration_seconds) : 180,
@@ -904,6 +926,26 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
       return;
     }
 
+    // Fetch artist's content category once for all tracks
+    let contentCategory = 'music'; // Default
+    try {
+      const { data: artistData, error: artistError } = await supabase
+        .from('artist_access_codes')
+        .select('content_category')
+        .eq('artist_name', bulkSharedMetadata.artist)
+        .single();
+
+      if (!artistError && artistData?.content_category) {
+        contentCategory = artistData.content_category;
+        console.log(`✅ Bulk upload - Artist category: ${contentCategory}`);
+      } else {
+        console.log('⚠️ Bulk upload - Artist category not found, defaulting to music');
+      }
+    } catch (error) {
+      console.error('Failed to fetch artist category for bulk upload:', error);
+      console.log('⚠️ Using default category: music');
+    }
+
     setBulkUploading(true);
     setBulkProgress({ current: 0, total: bulkQueue.length });
 
@@ -944,6 +986,7 @@ function App({ artistName: propArtistName, isAdmin: propIsAdmin }) {
             album: bulkSharedMetadata.album,
             year: bulkSharedMetadata.year || null,
             genre: bulkSharedMetadata.genre || 'Unknown',
+            category: contentCategory, // Explicit category from artist
             file_path: audioFileUrl,
             artwork_path: artworkFileUrl,
             duration_seconds: parseInt(track.duration_seconds) || 180,
